@@ -10,7 +10,8 @@ import (
 	"strings"
 	"sync"
 	"time"
-	"zoomrs/config"
+
+	"github.com/parMaster/zoomrs/config"
 )
 
 type AccessToken struct {
@@ -95,7 +96,7 @@ type Recordings struct {
 
 // Meeting contains the meeting details
 type Meeting struct {
-	ID             int             `json:"id"`
+	Id             int             `json:"id"`
 	UUID           string          `json:"uuid"`
 	Topic          string          `json:"topic"`
 	RecordingFiles []RecordingFile `json:"recording_files"`
@@ -104,7 +105,7 @@ type Meeting struct {
 
 // RecordingFile describes the
 type RecordingFile struct {
-	ID             string        `json:"id"`
+	Id             string        `json:"id"`
 	RecordingType  RecordingType `json:"recording_type"`
 	RecordingStart time.Time     `json:"recording_start"`
 	FileExtension  string        `json:"file_extension"`

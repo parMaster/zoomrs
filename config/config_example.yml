@@ -1,10 +1,10 @@
 server:
   listen: :8099
-  dbg: false
+  dbg: true
 client:
-  account_id: 
-  id: 
-  secret: 
+  account_id: secret
+  id: secret
+  secret: secret
 storage:
   type: sqlite
   path: file:data.db?mode=rwc&_journal_mode=WAL

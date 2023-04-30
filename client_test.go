@@ -2,7 +2,8 @@ package main
 
 import (
 	"testing"
-	"zoomrs/config"
+
+	"github.com/parMaster/zoomrs/config"
 
 	"github.com/stretchr/testify/assert"
 )

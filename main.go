@@ -10,7 +10,8 @@ import (
 	"os/signal"
 	"syscall"
 	"time"
-	"zoomrs/config"
+
+	"github.com/parMaster/zoomrs/config"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-pkgz/lgr"
