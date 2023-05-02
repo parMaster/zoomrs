@@ -27,5 +27,9 @@ func Test_LoadConfig(t *testing.T) {
 	if err != nil {
 		log.Fatalf("[ERROR] can't load config, %s", err)
 	}
-	assert.Equal(t, expected, *conf)
+	assert.Equal(t, expected.Server, conf.Server)
+	assert.Equal(t, expected.Storage, conf.Storage)
+	assert.NotEmpty(t, conf.Client.AccountId)
+	assert.NotEmpty(t, conf.Client.Id)
+	assert.NotEmpty(t, conf.Client.Secret)
 }

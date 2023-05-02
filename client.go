@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/parMaster/zoomrs/config"
+	"github.com/parMaster/zoomrs/storage/model"
 )
 
 type AccessToken struct {
@@ -80,40 +81,7 @@ func (z *ZoomClient) Authorize() error {
 	return nil
 }
 
-// RecordingType describes the cloud recording types
-type RecordingType string
-
-// Recordings
-type Recordings struct {
-	From          string    `json:"from"`
-	To            string    `json:"to"`
-	PageSize      int       `json:"page_size"`
-	PageCount     int       `json:"page_count"`
-	TotalRecords  int       `json:"total_records"`
-	NextPageToken string    `json:"next_page_token"`
-	Meetings      []Meeting `json:"meetings"`
-}
-
-// Meeting contains the meeting details
-type Meeting struct {
-	Id             int             `json:"id"`
-	UUID           string          `json:"uuid"`
-	Topic          string          `json:"topic"`
-	RecordingFiles []RecordingFile `json:"recording_files"`
-	StartTime      time.Time       `json:"-"`
-}
-
-// RecordingFile describes the
-type RecordingFile struct {
-	Id             string        `json:"id"`
-	RecordingType  RecordingType `json:"recording_type"`
-	RecordingStart time.Time     `json:"recording_start"`
-	FileExtension  string        `json:"file_extension"`
-	DownloadURL    string        `json:"download_url"`
-	PlayURL        string        `json:"play_url"`
-}
-
-func (z *ZoomClient) GetMeetings() ([]Meeting, error) {
+func (z *ZoomClient) GetMeetings() ([]model.Meeting, error) {
 
 	if z.token == nil || z.token.ExpiresAt.Before(time.Now()) {
 		if err := z.Authorize(); err != nil {
@@ -122,8 +90,8 @@ func (z *ZoomClient) GetMeetings() ([]Meeting, error) {
 	}
 
 	params := url.Values{}
-	params.Add(`page_size`, "300")
-	params.Add(`from`, time.Now().AddDate(0, 0, -3).Format("2006-01-02"))
+	params.Add(`page_size`, "30")
+	params.Add(`from`, time.Now().AddDate(0, 0, -1).Format("2006-01-02"))
 	log.Printf("[DEBUG] params = %s", params.Encode())
 	req, err := http.NewRequest(http.MethodGet, "https://api.zoom.us/v2/users/me/recordings?"+params.Encode(), nil)
 	if err != nil {
@@ -134,7 +102,7 @@ func (z *ZoomClient) GetMeetings() ([]Meeting, error) {
 	req.Header.Add(`Host`, "zoom.us")
 	req.Header.Add(`Content-Type`, "application/json")
 
-	meetings := []Meeting{}
+	meetings := []model.Meeting{}
 
 	for {
 		res, err := z.client.Do(req)
@@ -147,7 +115,7 @@ func (z *ZoomClient) GetMeetings() ([]Meeting, error) {
 			return nil, fmt.Errorf("unable to authorize with account id: %s and client id: %s, status %d, message: %s", z.cfg.AccountId, z.cfg.Id, res.StatusCode, res.Body)
 		}
 
-		recordings := &Recordings{}
+		recordings := &model.Recordings{}
 
 		if err := json.NewDecoder(res.Body).Decode(recordings); err != nil {
 			return nil, err

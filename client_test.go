@@ -8,7 +8,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func Test_Authorize(t *testing.T) {
+func Test_ZoomClient(t *testing.T) {
 
 	cfg, err := config.NewConfig("config/config.yml")
 	assert.NoError(t, err)
@@ -18,4 +18,8 @@ func Test_Authorize(t *testing.T) {
 
 	err = c.Authorize()
 	assert.NoError(t, err)
+
+	meetings, err := c.GetMeetings()
+	assert.NoError(t, err)
+	assert.NotNil(t, meetings)
 }

@@ -13,6 +13,8 @@ data/json
 config/config_dbg.yml
 # config with secrets must be committed implicitly
 config/config.yml
+# binaries and distribution artifacts
+dist/
 
 # Output of the go coverage tool, specifically when used with LiteIDE
 *.out

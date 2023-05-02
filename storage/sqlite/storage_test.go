@@ -16,27 +16,46 @@ func Test_SqliteStorage(t *testing.T) {
 	defer cancel()
 
 	var err error
-	store, err := NewStorage(ctx, "file:test_storage.db?mode=rwc")
+	store, err := NewStorage(ctx, "file:test_storage.db?mode=rwc&_journal_mode=WAL")
 	if err != nil {
 		log.Printf("[ERROR] Failed to open SQLite storage: %e", err)
 	}
+	store.Cleanup()
 
-	testRecord := model.Record{
-		Id:     "testId",
-		Type:   "testType",
-		Status: "testStatus",
-		Url:    "testUrl",
-		Path:   "testPath",
+	testRecords := []model.Record{
+		{
+			Id:            "Id1",
+			MeetingId:     "testUUID",
+			Type:          "testType",
+			StartTime:     time.Now(),
+			FileExtension: "M4A",
+			Status:        "testStatus",
+			DownloadURL:   "testDownUrl",
+			PlayURL:       "testPlayUrl",
+			FilePath:      "testFilePath",
+		},
+		{
+			Id:            "Id2",
+			MeetingId:     "testUUID",
+			Type:          "testType",
+			StartTime:     time.Now(),
+			FileExtension: "M4A",
+			Status:        "testStatus",
+			DownloadURL:   "testDownUrl",
+			PlayURL:       "testPlayUrl",
+			FilePath:      "testFilePath",
+		},
 	}
 
 	testMeeting := model.Meeting{
-		UUID:     "testUUID",
-		Topic:    "testTopic",
-		DateTime: time.Now().Format(time.DateTime),
-		Records:  []model.Record{testRecord, testRecord},
+		UUID:      "testUUID",
+		Topic:     "testTopic",
+		StartTime: time.Now(),
+		Records:   testRecords,
 	}
 
 	// write a record
-	err = store.SaveMeeting(&testMeeting)
+	err = store.SaveMeeting(testMeeting)
 	assert.Nil(t, err)
+
 }
