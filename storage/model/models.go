@@ -45,6 +45,7 @@ type Meeting struct {
 	Topic     string    `json:"topic"`
 	Records   []Record  `json:"recording_files"`
 	StartTime time.Time `json:"start_time"`
+	DateTime  string    `json:"-"`
 }
 
 // Record describes the records in recording_file array field
@@ -53,7 +54,8 @@ type Record struct {
 	MeetingId     string       `json:"meeting_id"` // foreign key to Meeting.UUID
 	Type          RecordType   `json:"recording_type"`
 	StartTime     time.Time    `json:"recording_start"` // DateTime in RFC3339
-	FileExtension string       `json:"file_extension"`  // M4A, MP4
+	DateTime      string       `json:"-"`
+	FileExtension string       `json:"file_extension"` // M4A, MP4
 	DownloadURL   string       `json:"download_url"`
 	PlayURL       string       `json:"play_url"`
 	Status        RecordStatus `json:"-"`

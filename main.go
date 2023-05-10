@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -12,6 +13,8 @@ import (
 	"time"
 
 	"github.com/parMaster/zoomrs/config"
+	"github.com/parMaster/zoomrs/storage"
+	"github.com/parMaster/zoomrs/storage/sqlite"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-pkgz/lgr"
@@ -22,19 +25,45 @@ import (
 type Server struct {
 	cfg    *config.Parameters
 	client *ZoomClient
+	store  storage.Storer
+	ctx    context.Context
 }
 
-func NewServer(conf *config.Parameters) *Server {
+func NewServer(conf *config.Parameters, ctx context.Context) *Server {
 	client := NewZoomClient(conf.Client)
-	return &Server{cfg: conf, client: client}
+	return &Server{cfg: conf, client: client, ctx: ctx}
 }
 
-func (s *Server) Run(ctx context.Context) {
+func LoadStorage(ctx context.Context, cfg config.Storage, s *storage.Storer) error {
+	var err error
+	switch cfg.Type {
+	case "sqlite":
+		*s, err = sqlite.NewStorage(ctx, cfg.Path)
+		if err != nil {
+			return fmt.Errorf("failed to init SQLite storage: %e", err)
+		}
+	case "":
+		return errors.New("storage is not configured")
+	default:
+		return fmt.Errorf("storage type %s is not supported", cfg.Type)
+	}
+	return err
+}
+
+func (s *Server) Run() {
 	log.Printf("[INFO] starting server at %s", s.cfg.Server.Listen)
 
-	go s.startServer(ctx)
+	err := LoadStorage(s.ctx, s.cfg.Storage, &s.store)
+	if err != nil {
+		log.Fatalf("[ERROR] failed to init storage: %e", err)
+	}
 
-	<-ctx.Done()
+	repo := NewRepository(s.store, s.client)
+
+	go s.startServer(s.ctx)
+	go repo.Run(s.ctx)
+
+	<-s.ctx.Done()
 }
 
 func (s *Server) startServer(ctx context.Context) {
@@ -110,7 +139,9 @@ func main() {
 		if err != nil {
 			log.Fatalf("[ERROR] can't load config, %s", err)
 		}
-		conf.Server.Dbg = opts.Dbg
+		if opts.Dbg {
+			conf.Server.Dbg = opts.Dbg
+		}
 	}
 
 	// Logger setup
@@ -118,8 +149,9 @@ func main() {
 		lgr.LevelBraces,
 		lgr.StackTraceOnError,
 	}
-	if opts.Dbg {
+	if conf.Server.Dbg {
 		logOpts = append(logOpts, lgr.Debug)
+		logOpts = append(logOpts, lgr.StackTraceOnError)
 	}
 	lgr.SetupStdLogger(logOpts...)
 
@@ -141,5 +173,5 @@ func main() {
 		cancel()
 	}()
 
-	NewServer(conf).Run(ctx)
+	NewServer(conf, ctx).Run()
 }

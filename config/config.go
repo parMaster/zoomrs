@@ -24,7 +24,7 @@ type Client struct {
 
 type Server struct {
 	Listen string `yaml:"listen"` // Address or/and Port for http server to listen to
-	Dbg    bool   `yaml:"-"`
+	Dbg    bool   `yaml:"dbg"`    // Debug mode
 }
 
 type Storage struct {

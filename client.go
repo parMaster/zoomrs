@@ -81,18 +81,24 @@ func (z *ZoomClient) Authorize() error {
 	return nil
 }
 
-func (z *ZoomClient) GetMeetings() ([]model.Meeting, error) {
-
+func (z *ZoomClient) GetToken() (*AccessToken, error) {
 	if z.token == nil || z.token.ExpiresAt.Before(time.Now()) {
 		if err := z.Authorize(); err != nil {
 			return nil, err
 		}
 	}
+	return z.token, nil
+}
+
+func (z *ZoomClient) GetMeetings() ([]model.Meeting, error) {
+
+	z.GetToken()
 
 	params := url.Values{}
-	params.Add(`page_size`, "30")
+	params.Add(`page_size`, "300")
 	params.Add(`from`, time.Now().AddDate(0, 0, -1).Format("2006-01-02"))
-	log.Printf("[DEBUG] params = %s", params.Encode())
+	params.Add(`to`, time.Now().AddDate(0, 0, -1).Format("2006-01-02"))
+	log.Printf("[DEBUG] initial params = %s", params.Encode())
 	req, err := http.NewRequest(http.MethodGet, "https://api.zoom.us/v2/users/me/recordings?"+params.Encode(), nil)
 	if err != nil {
 		return nil, err
@@ -105,6 +111,8 @@ func (z *ZoomClient) GetMeetings() ([]model.Meeting, error) {
 	meetings := []model.Meeting{}
 
 	for {
+		log.Printf("[DEBUG] params = %s", params.Encode())
+		req.URL.RawQuery = params.Encode()
 		res, err := z.client.Do(req)
 		if err != nil {
 			return nil, err
@@ -126,6 +134,7 @@ func (z *ZoomClient) GetMeetings() ([]model.Meeting, error) {
 		if recordings.NextPageToken == `` {
 			break
 		}
+		log.Printf("[DEBUG] recordings.NextPageToken = %v", recordings.NextPageToken)
 		params.Set(`next_page_token`, recordings.NextPageToken)
 		time.Sleep(500 * time.Millisecond)
 	}

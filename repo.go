@@ -1,132 +1,83 @@
 package main
 
-/*
 import (
+	"context"
+	"fmt"
+	"log"
 	"time"
 
 	"github.com/parMaster/zoomrs/storage"
 	"github.com/parMaster/zoomrs/storage/model"
 )
 
-// Repository will implement such features as:
-// - saving meetings to the storage, including record files of specific types
-// - syncing meetings with the storage
-// - updating recordings status - queued, downloading, downloaded, failed
-// - listing meetings and records
-// - deleting meetings from the storage
-// files management won't be implemented here
+/*
+ Repository will implement such features as:
+ - provide the service to sync meetings with the storage
+ - in the future: provide some kind of functions to catch the webhooks from Zoom and update the storage
+*/
 
-// Repository interface
-type Repository interface {
-	// SaveMeeting saves meeting to the storage
-	SaveMeeting(meeting Meeting) error
-	// SyncMeeting syncs meeting with the storage
-	SyncMeetings(meetings *[]Meeting) error
-	// UpdateMeeting updates meeting in the storage
-	UpdateRecording(Id string, status RecordingStatus) error
-	// ListMeetings lists meetings from the storage
-	ListMeetings() (map[string]Meeting, error)
-	// DeleteMeeting deletes meeting from the storage
-	DeleteMeeting(UUID string) error
-	// SyncableRecordTypes sets syncable record types
-	SyncableRecordTypes(types []RecordType)
+type Client interface {
+	Authorize() error
+	GetMeetings() ([]model.Meeting, error)
+	GetToken() (*AccessToken, error)
 }
 
-// Repo is the storage repository
-type Repo struct {
-	store    storage.Storer
-	syncable map[RecordType]bool
+type Repository struct {
+	store  storage.Storer
+	client Client
 }
 
-// NewRepository creates new repository
-func NewRepository(store storage.Storer) Repository {
-	r := &Repo{store: store}
-	r.syncable = make(map[RecordType]bool)
-	return r
+func NewRepository(store storage.Storer, client Client) *Repository {
+	return &Repository{store: store, client: client}
 }
 
-// TODO: add syncable record types to the config
-// SyncableRecordTypes sets syncable record types
-func (r *Repo) SyncableRecordTypes(types []RecordType) {
-	for _, t := range types {
-		r.syncable[t] = true
-	}
-}
+func (r *Repository) Run(ctx context.Context) {
+	ticker := time.NewTicker(60 * time.Minute)
+	for {
+		meetings, err := r.client.GetMeetings()
+		if err != nil {
+			log.Printf("[ERROR] failed to get meetings, %v", err)
+			continue
+		}
+		log.Printf("[DEBUG] Syncing meetings - %d in feed", len(meetings))
 
-// SaveMeeting saves meeting to the storage
-func (r *Repo) SaveMeeting(meeting Meeting) error {
-	var records []model.Record
-	for _, record := range meeting.RecordingFiles {
-		if r.syncable[RecordType(record.RecordingType)] {
-			records = append(records, model.Record{Id: record.Id, Type: record.RecordingType.String(), Status: string(Queued), Url: record.DownloadURL, Path: ""})
+		err = r.SyncMeetings(&meetings)
+		if err != nil {
+			log.Printf("[ERROR] failed to sync meetings, %v", err)
+			continue
+		}
+
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
 		}
 	}
-
-	err := r.store.SaveMeeting(model.Meeting{UUID: meeting.UUID, Topic: meeting.Topic, DateTime: meeting.StartTime.Format("2006-01-02 15:04:05"), Records: records})
-	return err
 }
 
-// SyncMeeting syncs meeting with the storage
-func (r *Repo) SyncMeetings(meetings *[]Meeting) error {
+func (r *Repository) SyncMeetings(meetings *[]model.Meeting) error {
 
-	repoMeetings, err := r.ListMeetings()
-	if err != nil {
-		return err
+	if len(*meetings) == 0 {
+		log.Printf("[DEBUG] No meetings to sync")
+		return nil
 	}
 
+	var saved int
 	for _, meeting := range *meetings {
-		if _, ok := repoMeetings[meeting.UUID]; !ok {
-			err := r.SaveMeeting(meeting)
-			if err != nil {
-				return err
+		_, err := r.store.GetMeeting(meeting.UUID)
+		if err != nil {
+			if err == storage.ErrNoRows {
+				err := r.store.SaveMeeting(meeting)
+				if err != nil {
+					return fmt.Errorf("failed to save meeting %s, %v", meeting.UUID, err)
+				}
+				saved++
+				continue
 			}
+			return fmt.Errorf("failed to get meeting %s, %v", meeting.UUID, err)
 		}
 	}
 
+	log.Printf("[DEBUG] Saved %d new meetings", saved)
 	return nil
 }
-
-// UpdateMeeting updates meeting in the storage
-func (r *Repo) UpdateRecording(Id string, status RecordingStatus) error {
-	err := r.store.UpdateRecord(Id, string(status))
-	return err
-}
-
-// ListMeetings lists meetings from the storage
-func (r *Repo) ListMeetings() (map[string]Meeting, error) {
-	meetings := make(map[string]Meeting)
-
-	storeMeetings, err := r.store.ListMeetings()
-	if err != nil {
-		return nil, err
-	}
-
-	for _, sm := range storeMeetings {
-
-		records, err := r.store.GetRecords(sm.UUID)
-		if err != nil {
-			return nil, err
-		}
-		RecordingFiles := make([]RecordingFile, len(records))
-		for _, record := range records {
-			RecordingFiles = append(RecordingFiles, RecordingFile{Id: record.Id, RecordingType: RecordingType(record.Type), DownloadURL: record.Url, Status: RecordingStatus(record.Status)})
-		}
-
-		meetingDateTime, err := time.Parse("2006-01-02 15:04:05", sm.DateTime)
-		if err != nil {
-			return nil, err
-		}
-		meetings[sm.UUID] = Meeting{UUID: sm.UUID, Topic: sm.Topic, StartTime: meetingDateTime, RecordingFiles: RecordingFiles}
-
-	}
-
-	return meetings, nil
-}
-
-// DeleteMeeting deletes meeting from the storage
-func (r *Repo) DeleteMeeting(UUID string) error {
-	err := r.store.DeleteMeeting(UUID)
-	return err
-}
-
-*/

@@ -9,10 +9,15 @@
 *.test
 # test db
 *.db
-data/json
+*.db-shm
+*.db-wal
+
+.tmp/
+
+# ignore configs with secrets
 config/config_dbg.yml
-# config with secrets must be committed implicitly
 config/config.yml
+
 # binaries and distribution artifacts
 dist/
 
@@ -22,6 +27,9 @@ dist/
 # Macos garbage
 .DS_Store
 ._.DS_Store
+
+# VSCode directory
+.vscode/
 
 # Dependency directories (remove the comment below to include it)
 # vendor/
