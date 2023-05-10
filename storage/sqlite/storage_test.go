@@ -29,10 +29,10 @@ func Test_SqliteStorage(t *testing.T) {
 		{
 			Id:            "Id1",
 			MeetingId:     "testUUID",
-			Type:          "testType",
+			Type:          model.AudioOnly,
 			StartTime:     timeNow,
 			FileExtension: "M4A",
-			Status:        "testStatus",
+			Status:        model.Queued,
 			DownloadURL:   "testDownUrl",
 			PlayURL:       "testPlayUrl",
 			FilePath:      "testFilePath",
@@ -43,7 +43,18 @@ func Test_SqliteStorage(t *testing.T) {
 			Type:          "testType",
 			StartTime:     timeNow,
 			FileExtension: "M4A",
-			Status:        "testStatus",
+			Status:        model.Downloading,
+			DownloadURL:   "testDownUrl",
+			PlayURL:       "testPlayUrl",
+			FilePath:      "testFilePath",
+		},
+		{
+			Id:            "Id3",
+			MeetingId:     "testUUID",
+			Type:          model.ChatFile,
+			StartTime:     timeNow,
+			FileExtension: "M4A",
+			Status:        model.Queued,
 			DownloadURL:   "testDownUrl",
 			PlayURL:       "testPlayUrl",
 			FilePath:      "testFilePath",
@@ -84,4 +95,19 @@ func Test_SqliteStorage(t *testing.T) {
 	records, err = store.GetRecords("noSuchUUID")
 	assert.Empty(t, records)
 	assert.Nil(t, err)
+
+	q1, err := store.GetQueuedRecord()
+	assert.NoError(t, err)
+	assert.NotNil(t, q1)
+	assert.Equal(t, "Id1", q1.Id)
+
+	q2, err := store.GetQueuedRecord(model.ChatFile)
+	assert.NoError(t, err)
+	assert.NotNil(t, q2)
+	assert.Equal(t, "Id3", q2.Id)
+
+	q3, err := store.GetQueuedRecord(model.ChatFile, model.AudioOnly)
+	assert.NoError(t, err)
+	assert.NotNil(t, q3)
+	assert.Equal(t, "Id1", q3.Id)
 }

@@ -3,6 +3,7 @@ module github.com/parMaster/zoomrs
 go 1.20
 
 require (
+	github.com/cavaliergopher/grab/v3 v3.0.1
 	github.com/go-chi/chi/v5 v5.0.8
 	github.com/go-pkgz/lgr v0.11.0
 	github.com/go-pkgz/rest v1.17.0

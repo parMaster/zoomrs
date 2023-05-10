@@ -30,10 +30,9 @@ type Server struct {
 type Storage struct {
 	// Type of storage to use
 	// Currently supported: sqlite, memory
-	Type string `yaml:"type"`
-	// Path to the database file
-	// Used only with sqlite storage
-	Path string `yaml:"path"`
+	Type       string `yaml:"type"`
+	Path       string `yaml:"path"` // Path to the database file
+	Repository string `yaml:"repository"`
 }
 
 // New creates a new Parameters from the given file
@@ -48,6 +47,6 @@ func NewConfig(fname string) (*Parameters, error) {
 		log.Printf("[ERROR] failed to parse config %s: %e", fname, err)
 		return nil, fmt.Errorf("failed to parse config %s: %w", fname, err)
 	}
-	log.Printf("[DEBUG] config: %+v", p)
+	// log.Printf("[DEBUG] config: %+v", p)
 	return p, nil
 }

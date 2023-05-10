@@ -181,10 +181,48 @@ func (s *SQLiteStorage) DeleteMeeting(UUID string) error {
 }
 
 // UpdateRecord updates a record in the database
-func (s *SQLiteStorage) UpdateRecord(Id string, status model.RecordStatus) error {
-	q := "UPDATE `records` SET status = $1 WHERE id = $2"
-	_, err := s.DB.ExecContext(s.ctx, q, status, Id)
+func (s *SQLiteStorage) UpdateRecord(Id string, status model.RecordStatus, path string) error {
+	q := "UPDATE `records` SET status = $1, path = $2 WHERE id = $3"
+	_, err := s.DB.ExecContext(s.ctx, q, status, path, Id)
 	return err
+}
+
+// GetQueuedRecord returns a queued record from the database
+func (s *SQLiteStorage) GetQueuedRecord(types ...model.RecordType) (*model.Record, error) {
+
+	var q string
+	if len(types) > 0 {
+		q = "SELECT * FROM `records` WHERE status = $1 AND type IN ("
+		for i := 0; i < len(types); i++ {
+			q += ("'" + string(types[i]) + "'")
+			if i < len(types)-1 {
+				q += ","
+			}
+		}
+		q += ") ORDER BY startTime, id LIMIT 1"
+	} else {
+		q = "SELECT * FROM `records` WHERE status = $1 ORDER BY startTime, id LIMIT 1"
+	}
+
+	row := s.DB.QueryRowContext(s.ctx, q, model.Queued)
+	record := model.Record{}
+	err := row.Scan(
+		&record.Id,
+		&record.MeetingId,
+		&record.Type,
+		&record.DateTime,
+		&record.FileExtension,
+		&record.DownloadURL,
+		&record.PlayURL,
+		&record.Status,
+		&record.FilePath)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, storage.ErrNoRows
+		}
+		return nil, err
+	}
+	return &record, nil
 }
 
 // Cleanup deletes all meetings and records from the database, used for testing

@@ -8,3 +8,4 @@ client:
 storage:
   type: sqlite
   path: file:data.db?mode=rwc&_journal_mode=WAL
+  repository: .tmp # Path to download files

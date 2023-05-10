@@ -6,6 +6,9 @@ import (
 	"log"
 	"time"
 
+	"github.com/cavaliergopher/grab/v3"
+
+	"github.com/parMaster/zoomrs/config"
 	"github.com/parMaster/zoomrs/storage"
 	"github.com/parMaster/zoomrs/storage/model"
 )
@@ -25,13 +28,14 @@ type Client interface {
 type Repository struct {
 	store  storage.Storer
 	client Client
+	cfg    config.Parameters
 }
 
-func NewRepository(store storage.Storer, client Client) *Repository {
-	return &Repository{store: store, client: client}
+func NewRepository(store storage.Storer, client Client, cfg config.Parameters) *Repository {
+	return &Repository{store: store, client: client, cfg: cfg}
 }
 
-func (r *Repository) Run(ctx context.Context) {
+func (r *Repository) SyncJob(ctx context.Context) {
 	ticker := time.NewTicker(60 * time.Minute)
 	for {
 		meetings, err := r.client.GetMeetings()
@@ -79,5 +83,60 @@ func (r *Repository) SyncMeetings(meetings *[]model.Meeting) error {
 	}
 
 	log.Printf("[DEBUG] Saved %d new meetings", saved)
+	return nil
+}
+
+func (r *Repository) DownloadJob(ctx context.Context) {
+	ticker := time.NewTicker(1 * time.Minute)
+	for {
+
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+		}
+
+		var queued *model.Record
+		var err error
+		if false && r.cfg.Server.Dbg { // debug switch
+			queued, err = r.store.GetQueuedRecord(model.AudioOnly)
+		} else {
+			queued, err = r.store.GetQueuedRecord(model.AudioOnly, model.ChatFile, model.SharedScreenWithGalleryView)
+		}
+		if err != nil {
+			log.Printf("[ERROR] failed to get queued records, %v", err)
+			continue
+		}
+
+		// download the record
+		if queued != nil {
+			log.Printf("[DEBUG] Downloading record %s, meetingId %s, type %s", queued.Id, queued.MeetingId, queued.Type)
+			err = r.DownloadRecord(queued)
+			if err != nil {
+				log.Printf("[ERROR] failed to download record %s, %v", queued.Id, err)
+				continue
+			}
+		}
+	}
+}
+
+// DownloadRecord downloads the record from Zoom
+func (r *Repository) DownloadRecord(record *model.Record) error {
+
+	token, err := r.client.GetToken()
+	if err != nil {
+		return err
+	}
+
+	url := record.DownloadURL + "?access_token=" + token.AccessToken
+
+	r.store.UpdateRecord(record.Id, model.Downloading, "")
+	resp, err := grab.Get(r.cfg.Storage.Repository, url)
+	if err != nil {
+		r.store.UpdateRecord(record.Id, model.Failed, "")
+		return err
+	}
+	log.Printf("[DEBUG] Download saved to %s", resp.Filename)
+	r.store.UpdateRecord(record.Id, model.Downloaded, resp.Filename)
 	return nil
 }
