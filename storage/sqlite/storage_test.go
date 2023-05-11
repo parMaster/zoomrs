@@ -121,4 +121,14 @@ func Test_SqliteStorage(t *testing.T) {
 	assert.ErrorIs(t, err, storage.ErrNoRows)
 	assert.Nil(t, q4)
 
+	// Reset failed records
+	err = store.ResetFailedRecords()
+	assert.NoError(t, err)
+	// check that all records are queued
+	records, err = store.GetRecords(testMeeting.UUID)
+	assert.NoError(t, err)
+	assert.Equal(t, len(testRecords), len(records))
+	assert.Equal(t, model.Queued, records[0].Status)
+	assert.Equal(t, model.Queued, records[1].Status)
+	assert.Equal(t, model.Queued, records[2].Status)
 }

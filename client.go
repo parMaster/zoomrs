@@ -143,3 +143,49 @@ func (z *ZoomClient) GetMeetings() ([]model.Meeting, error) {
 
 	return meetings, nil
 }
+
+// DeleteMeetingRecordings - delete all recordings for a meeting
+// https://developers.zoom.us/docs/api/rest/reference/zoom-api/methods/#operation/recordingDelete
+// DELETE /meetings/{meetingId}/recordings
+// - meetingId string
+// - delete bool - true to delete, false to trash
+func (z *ZoomClient) DeleteMeetingRecordings(meetingId string, delete bool) error {
+
+	if !z.cfg.DeleteDownloaded && !z.cfg.TrashDownloaded {
+		return errors.New("both delete_downloaded and trash_downloaded are false")
+	}
+
+	_, err := z.GetToken()
+	if err != nil {
+		return errors.Join(fmt.Errorf("unable to get token"), err)
+	}
+
+	// @param action string - Default: trash; Allowed: trash | delete
+	params := url.Values{}
+	action := `trash`
+	if delete && z.cfg.DeleteDownloaded {
+		action = `delete`
+	}
+	params.Add(`action`, action)
+	log.Printf("[DEBUG] initial params = %s", params.Encode())
+	req, err := http.NewRequest(http.MethodDelete, "https://api.zoom.us/v2/meetings/"+meetingId+"/recordings?"+params.Encode(), nil)
+	if err != nil {
+		return err
+	}
+
+	req.Header.Add(`Authorization`, fmt.Sprintf("Bearer %s", z.token.AccessToken))
+	req.Header.Add(`Host`, "zoom.us")
+	req.Header.Add(`Content-Type`, "application/json")
+
+	res, err := z.client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer res.Body.Close()
+
+	if res.StatusCode != http.StatusNoContent {
+		return fmt.Errorf("unable to delete recordings for meeting id: %s, status %d, message: %s", meetingId, res.StatusCode, res.Body)
+	}
+
+	return nil
+}

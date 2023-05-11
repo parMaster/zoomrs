@@ -190,6 +190,13 @@ func (s *SQLiteStorage) UpdateRecord(Id string, status model.RecordStatus, path 
 	return err
 }
 
+// ResetFailedRecords resets all failed records to queued
+func (s *SQLiteStorage) ResetFailedRecords() error {
+	q := "UPDATE `records` SET status = 'queued' WHERE status IN ('failed', 'downloading')"
+	_, err := s.DB.ExecContext(s.ctx, q)
+	return err
+}
+
 // GetQueuedRecord returns a queued record from the database
 func (s *SQLiteStorage) GetQueuedRecord(types ...model.RecordType) (*model.Record, error) {
 

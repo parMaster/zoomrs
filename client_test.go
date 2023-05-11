@@ -42,5 +42,4 @@ func Test_ZoomClient(t *testing.T) {
 	assert.Error(t, err)
 	assert.Nil(t, token)
 	t.Logf("Error: %v", err)
-
 }

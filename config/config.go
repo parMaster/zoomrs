@@ -17,9 +17,11 @@ type Parameters struct {
 
 // Client is the Zoom client configuration
 type Client struct {
-	AccountId string `yaml:"account_id"`
-	Id        string `yaml:"id"`
-	Secret    string `yaml:"secret"`
+	AccountId        string `yaml:"account_id"`
+	Id               string `yaml:"id"`
+	Secret           string `yaml:"secret"`
+	DeleteDownloaded bool   `yaml:"delete_downloaded"`
+	TrashDownloaded  bool   `yaml:"trash_downloaded"`
 }
 
 type Server struct {

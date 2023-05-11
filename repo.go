@@ -17,6 +17,7 @@ type Client interface {
 	Authorize() error
 	GetMeetings() ([]model.Meeting, error)
 	GetToken() (*AccessToken, error)
+	DeleteMeetingRecordings(meetingId string, delete bool) error
 }
 
 type Repository struct {
@@ -112,6 +113,21 @@ func (r *Repository) DownloadJob(ctx context.Context) {
 			err = r.DownloadRecord(queued)
 			if err != nil {
 				log.Printf("[ERROR] failed to download record %s, %v", queued.Id, err)
+				continue
+			}
+			if r.cfg.Client.DeleteDownloaded || r.cfg.Client.TrashDownloaded { // debug switch
+				err := r.client.DeleteMeetingRecordings(queued.MeetingId, true)
+				if err != nil {
+					log.Printf("[ERROR] failed to delete meeting %s, %v", queued.MeetingId, err)
+					continue
+				}
+			}
+		} else {
+			// no queued records
+			// retry failed records and 'downloading' records - put them back to 'queued'
+			err := r.store.ResetFailedRecords()
+			if err != nil {
+				log.Printf("[ERROR] failed to reset failed records, %v", err)
 				continue
 			}
 		}
