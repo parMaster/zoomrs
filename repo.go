@@ -82,7 +82,6 @@ func (r *Repository) SyncMeetings(meetings *[]model.Meeting) error {
 }
 
 func (r *Repository) DownloadJob(ctx context.Context) {
-	// ToDo: handle 'downloading' and 'failed' records - switch to 'queued'?
 	ticker := time.NewTicker(1 * time.Minute)
 	for {
 		select {
@@ -93,14 +92,16 @@ func (r *Repository) DownloadJob(ctx context.Context) {
 
 		var queued *model.Record
 		var err error
-		if false && r.cfg.Server.Dbg { // debug switch
-			queued, err = r.store.GetQueuedRecord(model.AudioOnly)
-		} else {
-			queued, err = r.store.GetQueuedRecord(model.ChatFile, model.SharedScreenWithGalleryView)
-		}
+		queued, err = r.store.GetQueuedRecord(model.ChatFile, model.SharedScreenWithGalleryView)
 		if err != nil {
 			if err == storage.ErrNoRows {
 				log.Printf("[DEBUG] No queued records")
+				// retry failed records and 'downloading' records - put them back to 'queued'
+				err := r.store.ResetFailedRecords()
+				if err != nil {
+					log.Printf("[ERROR] failed to reset failed records, %v", err)
+					continue
+				}
 				continue
 			}
 			log.Printf("[ERROR] failed to get queued records, %v", err)
@@ -121,14 +122,6 @@ func (r *Repository) DownloadJob(ctx context.Context) {
 					log.Printf("[ERROR] failed to delete meeting %s, %v", queued.MeetingId, err)
 					continue
 				}
-			}
-		} else {
-			// no queued records
-			// retry failed records and 'downloading' records - put them back to 'queued'
-			err := r.store.ResetFailedRecords()
-			if err != nil {
-				log.Printf("[ERROR] failed to reset failed records, %v", err)
-				continue
 			}
 		}
 	}
