@@ -16,8 +16,9 @@ func Test_LoadConfig(t *testing.T) {
 			Dbg:    false,
 		},
 		Storage: Storage{
-			Type: "sqlite",
-			Path: "file:data.db?mode=rwc&_journal_mode=WAL",
+			Type:       "sqlite",
+			Path:       "file:data.db?mode=rwc&_journal_mode=WAL",
+			Repository: ".tmp",
 		},
 	}
 

@@ -13,12 +13,6 @@ import (
 	"github.com/parMaster/zoomrs/storage/model"
 )
 
-/*
- Repository will implement such features as:
- - provide the service to sync meetings with the storage
- - in the future: provide some kind of functions to catch the webhooks from Zoom and update the storage
-*/
-
 type Client interface {
 	Authorize() error
 	GetMeetings() ([]model.Meeting, error)
@@ -87,9 +81,9 @@ func (r *Repository) SyncMeetings(meetings *[]model.Meeting) error {
 }
 
 func (r *Repository) DownloadJob(ctx context.Context) {
+	// ToDo: handle 'downloading' and 'failed' records - switch to 'queued'?
 	ticker := time.NewTicker(1 * time.Minute)
 	for {
-
 		select {
 		case <-ctx.Done():
 			return
@@ -101,9 +95,13 @@ func (r *Repository) DownloadJob(ctx context.Context) {
 		if false && r.cfg.Server.Dbg { // debug switch
 			queued, err = r.store.GetQueuedRecord(model.AudioOnly)
 		} else {
-			queued, err = r.store.GetQueuedRecord(model.AudioOnly, model.ChatFile, model.SharedScreenWithGalleryView)
+			queued, err = r.store.GetQueuedRecord(model.ChatFile, model.SharedScreenWithGalleryView)
 		}
 		if err != nil {
+			if err == storage.ErrNoRows {
+				log.Printf("[DEBUG] No queued records")
+				continue
+			}
 			log.Printf("[ERROR] failed to get queued records, %v", err)
 			continue
 		}
@@ -132,6 +130,7 @@ func (r *Repository) DownloadRecord(record *model.Record) error {
 
 	r.store.UpdateRecord(record.Id, model.Downloading, "")
 	resp, err := grab.Get(r.cfg.Storage.Repository, url)
+	// ToDo: handle "server returned 401 Unauthorized" error
 	if err != nil {
 		r.store.UpdateRecord(record.Id, model.Failed, "")
 		return err

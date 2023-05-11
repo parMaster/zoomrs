@@ -37,11 +37,7 @@ func NewZoomClient(cfg config.Client) *ZoomClient {
 }
 
 func (z *ZoomClient) Authorize() error {
-	z.mx.Lock()
-	defer z.mx.Unlock()
-
 	bearer := b64.StdEncoding.EncodeToString([]byte(z.cfg.Id + ":" + z.cfg.Secret))
-	log.Printf("[DEBUG] bearer = base64 encoded clientId:clientSecret: %s", bearer)
 
 	params := url.Values{}
 	params.Add(`grant_type`, `account_credentials`)
@@ -82,6 +78,9 @@ func (z *ZoomClient) Authorize() error {
 }
 
 func (z *ZoomClient) GetToken() (*AccessToken, error) {
+	z.mx.Lock()
+	defer z.mx.Unlock()
+
 	if z.token == nil || z.token.ExpiresAt.Before(time.Now()) {
 		if err := z.Authorize(); err != nil {
 			return nil, err

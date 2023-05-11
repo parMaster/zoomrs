@@ -22,4 +22,16 @@ func Test_ZoomClient(t *testing.T) {
 	meetings, err := c.GetMeetings()
 	assert.NoError(t, err)
 	assert.NotNil(t, meetings)
+
+	// Get token race condition
+	go func() {
+		token, err := c.GetToken()
+		assert.NoError(t, err)
+		assert.NotNil(t, token)
+	}()
+
+	token, err := c.GetToken()
+	assert.NoError(t, err)
+	assert.NotNil(t, token)
+
 }

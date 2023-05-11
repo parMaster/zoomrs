@@ -32,6 +32,7 @@ func Test_SqliteStorage(t *testing.T) {
 			Type:          model.AudioOnly,
 			StartTime:     timeNow,
 			FileExtension: "M4A",
+			FileSize:      1000000000,
 			Status:        model.Queued,
 			DownloadURL:   "testDownUrl",
 			PlayURL:       "testPlayUrl",
@@ -43,6 +44,7 @@ func Test_SqliteStorage(t *testing.T) {
 			Type:          "testType",
 			StartTime:     timeNow,
 			FileExtension: "M4A",
+			FileSize:      2000000000,
 			Status:        model.Downloading,
 			DownloadURL:   "testDownUrl",
 			PlayURL:       "testPlayUrl",
@@ -54,6 +56,7 @@ func Test_SqliteStorage(t *testing.T) {
 			Type:          model.ChatFile,
 			StartTime:     timeNow,
 			FileExtension: "M4A",
+			FileSize:      3000000000,
 			Status:        model.Queued,
 			DownloadURL:   "testDownUrl",
 			PlayURL:       "testPlayUrl",
@@ -96,6 +99,7 @@ func Test_SqliteStorage(t *testing.T) {
 	assert.Empty(t, records)
 	assert.Nil(t, err)
 
+	// Get queued records - happy path
 	q1, err := store.GetQueuedRecord()
 	assert.NoError(t, err)
 	assert.NotNil(t, q1)
@@ -110,4 +114,11 @@ func Test_SqliteStorage(t *testing.T) {
 	assert.NoError(t, err)
 	assert.NotNil(t, q3)
 	assert.Equal(t, "Id1", q3.Id)
+	assert.Equal(t, testRecords[0].FileSize, q3.FileSize)
+
+	// Get queued records - no rows
+	q4, err := store.GetQueuedRecord(model.SharedScreenWithGalleryView)
+	assert.ErrorIs(t, err, storage.ErrNoRows)
+	assert.Nil(t, q4)
+
 }

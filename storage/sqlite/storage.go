@@ -39,6 +39,7 @@ func NewStorage(ctx context.Context, path string) (*SQLiteStorage, error) {
 		type TEXT,
 		startTime TEXT,
 		fileExtension TEXT,
+		fileSize INTEGER,
 		downUrl TEXT,
 		playUrl TEXT,
 		status TEXT,
@@ -87,13 +88,14 @@ func (s *SQLiteStorage) saveRecord(record model.Record) error {
 	// convert time to local
 	record.StartTime = record.StartTime.Local()
 
-	q := "INSERT INTO `records` VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)"
+	q := "INSERT INTO `records` VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)"
 	_, err := s.DB.ExecContext(s.ctx, q,
 		record.Id,                              // id
 		record.MeetingId,                       // meetingId
 		record.Type,                            // type
 		record.StartTime.Format(time.DateTime), // startTime
 		record.FileExtension,                   // fileExtension
+		record.FileSize,                        // fileSize
 		record.DownloadURL,                     // downUrl
 		record.PlayURL,                         // playUrl
 		record.Status,                          // status
@@ -134,6 +136,7 @@ func (s *SQLiteStorage) GetRecords(UUID string) ([]model.Record, error) {
 			&record.Type,
 			&record.DateTime,
 			&record.FileExtension,
+			&record.FileSize,
 			&record.DownloadURL,
 			&record.PlayURL,
 			&record.Status,
@@ -212,6 +215,7 @@ func (s *SQLiteStorage) GetQueuedRecord(types ...model.RecordType) (*model.Recor
 		&record.Type,
 		&record.DateTime,
 		&record.FileExtension,
+		&record.FileSize,
 		&record.DownloadURL,
 		&record.PlayURL,
 		&record.Status,
