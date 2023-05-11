@@ -3,6 +3,7 @@ package main
 import (
 	b64 "encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -90,8 +91,10 @@ func (z *ZoomClient) GetToken() (*AccessToken, error) {
 }
 
 func (z *ZoomClient) GetMeetings() ([]model.Meeting, error) {
-
-	z.GetToken()
+	_, err := z.GetToken()
+	if err != nil {
+		return nil, errors.Join(fmt.Errorf("unable to get token"), err)
+	}
 
 	params := url.Values{}
 	params.Add(`page_size`, "300")

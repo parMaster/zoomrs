@@ -10,7 +10,7 @@ import (
 
 func Test_ZoomClient(t *testing.T) {
 
-	cfg, err := config.NewConfig("config/config.yml")
+	cfg, err := config.NewConfig("config/config_dbg.yml")
 	assert.NoError(t, err)
 
 	c := NewZoomClient(cfg.Client)
@@ -33,5 +33,14 @@ func Test_ZoomClient(t *testing.T) {
 	token, err := c.GetToken()
 	assert.NoError(t, err)
 	assert.NotNil(t, token)
+
+	// Get token error condition
+	cfg.Client.Secret = "error"
+	c = NewZoomClient(cfg.Client)
+	assert.NotNil(t, c)
+	token, err = c.GetToken()
+	assert.Error(t, err)
+	assert.Nil(t, token)
+	t.Logf("Error: %v", err)
 
 }
