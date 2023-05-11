@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"os"
 	"time"
 
 	"github.com/cavaliergopher/grab/v3"
@@ -82,7 +83,7 @@ func (r *Repository) SyncMeetings(meetings *[]model.Meeting) error {
 }
 
 func (r *Repository) DownloadJob(ctx context.Context) {
-	ticker := time.NewTicker(1 * time.Minute)
+	ticker := time.NewTicker(10 * time.Second)
 	for {
 		select {
 		case <-ctx.Done():
@@ -93,6 +94,7 @@ func (r *Repository) DownloadJob(ctx context.Context) {
 		var queued *model.Record
 		var err error
 		queued, err = r.store.GetQueuedRecord(model.ChatFile, model.SharedScreenWithGalleryView)
+		// queued, err = r.store.GetQueuedRecord(model.ChatFile, model.SharedScreenWithGalleryView)
 		if err != nil {
 			if err == storage.ErrNoRows {
 				log.Printf("[DEBUG] No queued records")
@@ -110,7 +112,7 @@ func (r *Repository) DownloadJob(ctx context.Context) {
 
 		// download the record
 		if queued != nil {
-			log.Printf("[DEBUG] Downloading record %s, meetingId %s, type %s", queued.Id, queued.MeetingId, queued.Type)
+			log.Printf("[INFO] Downloading %s record %s, meetingId %s", queued.Type, queued.Id, queued.MeetingId)
 			err = r.DownloadRecord(queued)
 			if err != nil {
 				log.Printf("[ERROR] failed to download record %s, %v", queued.Id, err)
@@ -129,22 +131,40 @@ func (r *Repository) DownloadJob(ctx context.Context) {
 
 // DownloadRecord downloads the record from Zoom
 func (r *Repository) DownloadRecord(record *model.Record) error {
-
 	token, err := r.client.GetToken()
 	if err != nil {
 		return err
 	}
+	r.store.UpdateRecord(record.Id, model.Downloading, "")
 
 	url := record.DownloadURL + "?access_token=" + token.AccessToken
+	path := r.cfg.Storage.Repository + "/" + record.Id
+	err = r.prepareDestination(path)
+	if err != nil {
+		return err
+	}
 
-	r.store.UpdateRecord(record.Id, model.Downloading, "")
-	resp, err := grab.Get(r.cfg.Storage.Repository, url)
+	resp, err := grab.Get(path, url)
 	// ToDo: handle "server returned 401 Unauthorized" error
 	if err != nil {
 		r.store.UpdateRecord(record.Id, model.Failed, "")
+		log.Printf("[DEBUG] Failed to download %s, %v", url, err)
 		return err
 	}
+
 	log.Printf("[DEBUG] Download saved to %s", resp.Filename)
 	r.store.UpdateRecord(record.Id, model.Downloaded, resp.Filename)
+	return nil
+}
+
+// PrepareDestination creates directory for the downloaded file
+func (r *Repository) prepareDestination(path string) error {
+	if _, err := os.Stat(path); os.IsNotExist(err) {
+		log.Printf("[DEBUG] Creating directory %s", path)
+		err := os.MkdirAll(path, os.ModePerm)
+		if err != nil {
+			return err
+		}
+	}
 	return nil
 }
