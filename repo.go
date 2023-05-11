@@ -56,7 +56,6 @@ func (r *Repository) SyncJob(ctx context.Context) {
 }
 
 func (r *Repository) SyncMeetings(meetings *[]model.Meeting) error {
-
 	if len(*meetings) == 0 {
 		log.Printf("[DEBUG] No meetings to sync")
 		return nil
@@ -94,11 +93,10 @@ func (r *Repository) DownloadJob(ctx context.Context) {
 		var queued *model.Record
 		var err error
 		queued, err = r.store.GetQueuedRecord(model.ChatFile, model.SharedScreenWithGalleryView)
-		// queued, err = r.store.GetQueuedRecord(model.ChatFile, model.SharedScreenWithGalleryView)
 		if err != nil {
 			if err == storage.ErrNoRows {
 				log.Printf("[DEBUG] No queued records")
-				// retry failed records and 'downloading' records - put them back to 'queued'
+				// retry 'failed' records and 'downloading' records - put them back to 'queued'
 				err := r.store.ResetFailedRecords()
 				if err != nil {
 					log.Printf("[ERROR] failed to reset failed records, %v", err)
@@ -112,16 +110,16 @@ func (r *Repository) DownloadJob(ctx context.Context) {
 
 		// download the record
 		if queued != nil {
-			log.Printf("[INFO] Downloading %s record %s, meetingId %s", queued.Type, queued.Id, queued.MeetingId)
+			log.Printf("[INFO] Downloading %s record %s meetingId %s", queued.Type, queued.Id, queued.MeetingId)
 			err = r.DownloadRecord(queued)
 			if err != nil {
-				log.Printf("[ERROR] failed to download record %s, %v", queued.Id, err)
+				log.Printf("[ERROR] failed to download record %s - %v", queued.Id, err)
 				continue
 			}
 			if r.cfg.Client.DeleteDownloaded || r.cfg.Client.TrashDownloaded { // debug switch
 				err := r.client.DeleteMeetingRecordings(queued.MeetingId, true)
 				if err != nil {
-					log.Printf("[ERROR] failed to delete meeting %s, %v", queued.MeetingId, err)
+					log.Printf("[ERROR] failed to delete meeting %s - %v", queued.MeetingId, err)
 					continue
 				}
 			}
@@ -145,7 +143,6 @@ func (r *Repository) DownloadRecord(record *model.Record) error {
 	}
 
 	resp, err := grab.Get(path, url)
-	// ToDo: handle "server returned 401 Unauthorized" error
 	if err != nil {
 		r.store.UpdateRecord(record.Id, model.Failed, "")
 		log.Printf("[DEBUG] Failed to download %s, %v", url, err)

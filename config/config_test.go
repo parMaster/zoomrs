@@ -20,6 +20,10 @@ func Test_LoadConfig(t *testing.T) {
 			Path:       "file:data.db?mode=rwc&_journal_mode=WAL",
 			Repository: ".tmp",
 		},
+		Client: Client{
+			DeleteDownloaded: false,
+			TrashDownloaded:  false,
+		},
 	}
 
 	var conf *Parameters
@@ -33,4 +37,6 @@ func Test_LoadConfig(t *testing.T) {
 	assert.NotEmpty(t, conf.Client.AccountId)
 	assert.NotEmpty(t, conf.Client.Id)
 	assert.NotEmpty(t, conf.Client.Secret)
+	assert.Equal(t, expected.Client.DeleteDownloaded, conf.Client.DeleteDownloaded)
+	assert.Equal(t, expected.Client.TrashDownloaded, conf.Client.TrashDownloaded)
 }
