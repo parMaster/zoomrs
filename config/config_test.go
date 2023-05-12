@@ -13,12 +13,13 @@ func Test_LoadConfig(t *testing.T) {
 	expected := Parameters{
 		Server: Server{
 			Listen: ":8099",
-			Dbg:    false,
+			Dbg:    true,
 		},
 		Storage: Storage{
 			Type:       "sqlite",
-			Path:       "file:data.db?mode=rwc&_journal_mode=WAL",
+			Path:       "file:.tmp/data.db?mode=rwc&_journal_mode=WAL",
 			Repository: ".tmp",
+			SyncTypes:  []string{"shared_screen_with_gallery_view", "chat_file"},
 		},
 		Client: Client{
 			DeleteDownloaded: false,
@@ -28,7 +29,7 @@ func Test_LoadConfig(t *testing.T) {
 
 	var conf *Parameters
 	var err error
-	conf, err = NewConfig("config.yml")
+	conf, err = NewConfig("config_dbg.yml")
 	if err != nil {
 		log.Fatalf("[ERROR] can't load config, %s", err)
 	}
@@ -39,4 +40,6 @@ func Test_LoadConfig(t *testing.T) {
 	assert.NotEmpty(t, conf.Client.Secret)
 	assert.Equal(t, expected.Client.DeleteDownloaded, conf.Client.DeleteDownloaded)
 	assert.Equal(t, expected.Client.TrashDownloaded, conf.Client.TrashDownloaded)
+
+	t.Logf("%v+", conf.Storage)
 }

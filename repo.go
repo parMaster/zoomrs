@@ -22,13 +22,23 @@ type Client interface {
 }
 
 type Repository struct {
-	store  storage.Storer
-	client Client
-	cfg    config.Parameters
+	store     storage.Storer
+	client    Client
+	cfg       config.Parameters
+	syncTypes map[model.RecordType]bool
 }
 
 func NewRepository(store storage.Storer, client Client, cfg config.Parameters) *Repository {
-	return &Repository{store: store, client: client, cfg: cfg}
+
+	var syncTypes map[model.RecordType]bool
+	if len(cfg.Storage.SyncTypes) > 0 {
+		syncTypes = make(map[model.RecordType]bool)
+		for _, t := range cfg.Storage.SyncTypes {
+			syncTypes[model.RecordType(t)] = true
+		}
+	}
+
+	return &Repository{store: store, client: client, cfg: cfg, syncTypes: syncTypes}
 }
 
 func (r *Repository) SyncJob(ctx context.Context) {
@@ -66,6 +76,17 @@ func (r *Repository) SyncMeetings(meetings *[]model.Meeting) error {
 		_, err := r.store.GetMeeting(meeting.UUID)
 		if err != nil {
 			if err == storage.ErrNoRows {
+
+				// filter out meeting recordings that are not supported
+				var records []model.Record
+				for _, record := range meeting.Records {
+					_, ok := r.syncTypes[record.Type]
+					if ok {
+						records = append(records, record)
+					}
+				}
+				meeting.Records = records
+
 				err := r.store.SaveMeeting(meeting)
 				if err != nil {
 					return fmt.Errorf("failed to save meeting %s, %v", meeting.UUID, err)
@@ -92,7 +113,7 @@ func (r *Repository) DownloadJob(ctx context.Context) {
 
 		var queued *model.Record
 		var err error
-		queued, err = r.store.GetQueuedRecord(model.ChatFile, model.SharedScreenWithGalleryView)
+		queued, err = r.store.GetQueuedRecord()
 		if err != nil {
 			if err == storage.ErrNoRows {
 				log.Printf("[DEBUG] No queued records")

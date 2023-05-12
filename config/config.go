@@ -32,9 +32,10 @@ type Server struct {
 type Storage struct {
 	// Type of storage to use
 	// Currently supported: sqlite, memory
-	Type       string `yaml:"type"`
-	Path       string `yaml:"path"` // Path to the database file
-	Repository string `yaml:"repository"`
+	Type       string   `yaml:"type"`
+	Path       string   `yaml:"path"` // Path to the database file
+	Repository string   `yaml:"repository"`
+	SyncTypes  []string `yaml:"sync_types"`
 }
 
 // New creates a new Parameters from the given file

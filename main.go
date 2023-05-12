@@ -91,8 +91,11 @@ func (s *Server) router() http.Handler {
 	router.Use(rest.Throttle(5))
 
 	router.Get("/status", func(rw http.ResponseWriter, r *http.Request) {
-		resp := map[string]string{
+		stats, _ := s.store.Stats()
+
+		resp := map[string]interface{}{
 			"status": "OK",
+			"stats":  stats,
 		}
 
 		rw.Header().Set("Content-Type", "application/json")
@@ -111,6 +114,9 @@ func (s *Server) router() http.Handler {
 		}
 		json.NewEncoder(rw).Encode(meetings)
 	})
+
+	fs := http.FileServer(http.Dir(s.cfg.Storage.Repository))
+	router.Handle("/repo/*", http.StripPrefix("/repo", fs))
 
 	return router
 }

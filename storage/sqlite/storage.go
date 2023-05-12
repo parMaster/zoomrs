@@ -198,21 +198,8 @@ func (s *SQLiteStorage) ResetFailedRecords() error {
 }
 
 // GetQueuedRecord returns a queued record from the database
-func (s *SQLiteStorage) GetQueuedRecord(types ...model.RecordType) (*model.Record, error) {
-
-	var q string
-	if len(types) > 0 {
-		q = "SELECT * FROM `records` WHERE status = $1 AND type IN ("
-		for i := 0; i < len(types); i++ {
-			q += ("'" + string(types[i]) + "'")
-			if i < len(types)-1 {
-				q += ","
-			}
-		}
-		q += ") ORDER BY startTime, id LIMIT 1"
-	} else {
-		q = "SELECT * FROM `records` WHERE status = $1 ORDER BY startTime, id LIMIT 1"
-	}
+func (s *SQLiteStorage) GetQueuedRecord() (*model.Record, error) {
+	q := "SELECT * FROM `records` WHERE status = $1 ORDER BY startTime, id LIMIT 1"
 
 	row := s.DB.QueryRowContext(s.ctx, q, model.Queued)
 	record := model.Record{}
@@ -234,6 +221,28 @@ func (s *SQLiteStorage) GetQueuedRecord(types ...model.RecordType) (*model.Recor
 		return nil, err
 	}
 	return &record, nil
+}
+
+// Stats returns the number of records in each status
+func (s *SQLiteStorage) Stats() (map[model.RecordStatus]int, error) {
+	q := "SELECT status, count(*) FROM `records` GROUP BY status"
+	rows, err := s.DB.QueryContext(s.ctx, q)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	stats := make(map[model.RecordStatus]int)
+	for rows.Next() {
+		var status string
+		var count int
+		err := rows.Scan(&status, &count)
+		if err != nil {
+			return nil, err
+		}
+		stats[model.RecordStatus(status)] = count
+	}
+	return stats, nil
 }
 
 // Cleanup deletes all meetings and records from the database, used for testing

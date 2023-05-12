@@ -100,24 +100,20 @@ func Test_SqliteStorage(t *testing.T) {
 	assert.Nil(t, err)
 
 	// Get queued records - happy path
-	q1, err := store.GetQueuedRecord()
-	assert.NoError(t, err)
-	assert.NotNil(t, q1)
-	assert.Equal(t, "Id1", q1.Id)
-
-	q2, err := store.GetQueuedRecord(model.ChatFile)
-	assert.NoError(t, err)
-	assert.NotNil(t, q2)
-	assert.Equal(t, "Id3", q2.Id)
-
-	q3, err := store.GetQueuedRecord(model.ChatFile, model.AudioOnly)
+	q3, err := store.GetQueuedRecord()
 	assert.NoError(t, err)
 	assert.NotNil(t, q3)
 	assert.Equal(t, "Id1", q3.Id)
 	assert.Equal(t, testRecords[0].FileSize, q3.FileSize)
 
+	// Update record status
+	err = store.UpdateRecord("Id1", model.Downloading, "testPath")
+	assert.NoError(t, err)
+	err = store.UpdateRecord("Id3", model.Failed, "testPath")
+	assert.NoError(t, err)
+
 	// Get queued records - no rows
-	q4, err := store.GetQueuedRecord(model.SharedScreenWithGalleryView)
+	q4, err := store.GetQueuedRecord()
 	assert.ErrorIs(t, err, storage.ErrNoRows)
 	assert.Nil(t, q4)
 
