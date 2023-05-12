@@ -103,7 +103,7 @@ func (r *Repository) SyncMeetings(meetings *[]model.Meeting) error {
 }
 
 func (r *Repository) DownloadJob(ctx context.Context) {
-	ticker := time.NewTicker(10 * time.Second)
+	ticker := time.NewTicker(1 * time.Minute)
 	for {
 		select {
 		case <-ctx.Done():

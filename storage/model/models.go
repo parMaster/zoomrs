@@ -42,6 +42,7 @@ type Recordings struct {
 // Meeting contains the meeting details
 type Meeting struct {
 	UUID      string    `json:"uuid"` // primary key
+	Id        uint64    `json:"id"`
 	Topic     string    `json:"topic"`
 	Records   []Record  `json:"recording_files"`
 	StartTime time.Time `json:"start_time"`

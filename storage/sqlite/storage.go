@@ -30,6 +30,7 @@ func NewStorage(ctx context.Context, path string) (*SQLiteStorage, error) {
 
 	q := `CREATE TABLE IF NOT EXISTS meetings (
 		uuid TEXT PRIMARY KEY,
+		id INTEGER,
 		topic TEXT,
 		startTime TEXT
 	);
@@ -58,11 +59,12 @@ func (s *SQLiteStorage) SaveMeeting(meeting model.Meeting) error {
 	// convert time to local
 	meeting.StartTime = meeting.StartTime.Local()
 
-	q := "INSERT INTO `meetings`(uuid, topic, startTime) VALUES ($1, $2, $3)"
+	q := "INSERT INTO `meetings`(uuid, id, topic, startTime) VALUES ($1, $2, $3, $4)"
 	log.Printf("[DEBUG] Saving meeting: %v", meeting)
 
 	_, err := s.DB.ExecContext(s.ctx, q,
 		meeting.UUID,                            // uuid
+		meeting.Id,                              // id
 		meeting.Topic,                           // topic
 		meeting.StartTime.Format(time.DateTime)) // startTime
 
@@ -108,7 +110,7 @@ func (s *SQLiteStorage) GetMeeting(UUID string) (*model.Meeting, error) {
 	q := "SELECT * FROM `meetings` WHERE uuid = $1"
 	row := s.DB.QueryRowContext(s.ctx, q, UUID)
 	meeting := model.Meeting{}
-	err := row.Scan(&meeting.UUID, &meeting.Topic, &meeting.DateTime)
+	err := row.Scan(&meeting.UUID, &meeting.Id, &meeting.Topic, &meeting.DateTime)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return nil, storage.ErrNoRows
@@ -161,7 +163,7 @@ func (s *SQLiteStorage) ListMeetings() ([]model.Meeting, error) {
 	var meetings []model.Meeting
 	for rows.Next() {
 		meeting := model.Meeting{}
-		err := rows.Scan(&meeting.UUID, &meeting.Topic, &meeting.StartTime)
+		err := rows.Scan(&meeting.UUID, &meeting.Id, &meeting.Topic, &meeting.StartTime)
 		if err != nil {
 			return nil, err
 		}

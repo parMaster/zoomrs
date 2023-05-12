@@ -66,6 +66,7 @@ func Test_SqliteStorage(t *testing.T) {
 
 	testMeeting := model.Meeting{
 		UUID:      "testUUID",
+		Id:        11122223333,
 		Topic:     "testTopic",
 		StartTime: timeNow,
 		Records:   testRecords,
@@ -79,6 +80,7 @@ func Test_SqliteStorage(t *testing.T) {
 	meeting, err := store.GetMeeting(testMeeting.UUID)
 	assert.Nil(t, err)
 	assert.Equal(t, testMeeting.UUID, meeting.UUID)
+	assert.Equal(t, testMeeting.Id, meeting.Id)
 	assert.Equal(t, timeNow.Format(time.DateTime), meeting.DateTime)
 
 	// read records
