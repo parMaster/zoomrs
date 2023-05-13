@@ -1,5 +1,5 @@
 build:
-	go build -o dist/zoomrs -v
+	go build 
 
 test:
 	go test ./...
@@ -7,6 +7,6 @@ test:
 run:
 	go run ./ --dbg --config ./config/config_dbg.yml
 
-.PHONY: build test
+.PHONY: build test run
 
 .DEFAULT_GOAL : build

@@ -1,0 +1,31 @@
+name: Go
+
+on:
+  push:
+    branches: [ "workflows", "main" ]
+  pull_request:
+    branches: [ "workflows", "main" ]
+
+jobs:
+
+  build:
+    runs-on: ubuntu-latest
+    steps:
+
+    - name: Set up Go
+      uses: actions/setup-go@v3
+      with:
+        go-version: "1.20"
+
+    - name: Checkout
+      uses: actions/checkout@v3
+
+    - name: Build
+      run: make build
+      env:
+        GOFLAGS: "-mod=vendor"
+
+    - name: Test
+      run: make test
+      env:
+        GOFLAGS: "-mod=vendor"

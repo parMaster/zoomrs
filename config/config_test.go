@@ -17,9 +17,10 @@ func Test_LoadConfig(t *testing.T) {
 		},
 		Storage: Storage{
 			Type:       "sqlite",
-			Path:       "file:.tmp/data.db?mode=rwc&_journal_mode=WAL",
+			Path:       "file:.tmp/data1.db?mode=rwc&_journal_mode=WAL",
 			Repository: ".tmp",
-			SyncTypes:  []string{"shared_screen_with_gallery_view", "chat_file"},
+			// SyncTypes:  []string{"shared_screen_with_gallery_view", "chat_file"},
+			SyncTypes: []string{"audio_only", "chat_file"},
 		},
 		Client: Client{
 			DeleteDownloaded: false,
