@@ -30,7 +30,7 @@ func Test_LoadConfig(t *testing.T) {
 
 	var conf *Parameters
 	var err error
-	conf, err = NewConfig("config_dbg.yml")
+	conf, err = NewConfig("config_example.yml")
 	if err != nil {
 		log.Fatalf("[ERROR] can't load config, %s", err)
 	}

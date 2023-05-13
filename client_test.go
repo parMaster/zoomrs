@@ -10,8 +10,12 @@ import (
 
 func Test_ZoomClient(t *testing.T) {
 
-	cfg, err := config.NewConfig("config/config_dbg.yml")
+	cfg, err := config.NewConfig("config/config_example.yml")
 	assert.NoError(t, err)
+
+	if cfg.Client.Id == "secret" || cfg.Client.Secret == "secret" {
+		t.Skip("Zoom credentials are not configured")
+	}
 
 	c := NewZoomClient(cfg.Client)
 	assert.NotNil(t, c)
