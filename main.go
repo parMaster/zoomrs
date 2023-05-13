@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	_ "embed"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -21,6 +22,9 @@ import (
 	"github.com/go-pkgz/rest"
 	flags "github.com/umputun/go-flags"
 )
+
+//go:embed web/index.html
+var index_html string
 
 type Server struct {
 	cfg    *config.Parameters
@@ -102,7 +106,22 @@ func (s *Server) router() http.Handler {
 		json.NewEncoder(rw).Encode(resp)
 	})
 
-	router.Get("/meetings", func(rw http.ResponseWriter, r *http.Request) {
+	router.Get("/listMeetings", func(rw http.ResponseWriter, r *http.Request) {
+		rw.Header().Set("Content-Type", "application/json")
+		rw.Header().Set("Access-Control-Allow-Origin", "*")
+		m, err := s.store.ListMeetings()
+		if err != nil {
+			log.Printf("[ERROR] failed to list meetings, %v", err)
+			rw.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		resp := map[string]interface{}{
+			"data": m,
+		}
+		json.NewEncoder(rw).Encode(resp)
+	})
+
+	router.Get("/loadMeetings", func(rw http.ResponseWriter, r *http.Request) {
 		rw.Header().Set("Content-Type", "application/json")
 		rw.Header().Set("Access-Control-Allow-Origin", "*")
 
@@ -113,6 +132,16 @@ func (s *Server) router() http.Handler {
 			return
 		}
 		json.NewEncoder(rw).Encode(meetings)
+	})
+
+	router.Get("/", func(rw http.ResponseWriter, r *http.Request) {
+		if s.cfg.Server.Dbg {
+			if b, err := os.ReadFile("web/index.html"); err == nil {
+				rw.Write([]byte(b))
+			}
+		} else {
+			rw.Write([]byte(index_html))
+		}
 	})
 
 	fs := http.FileServer(http.Dir(s.cfg.Storage.Repository))

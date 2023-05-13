@@ -46,7 +46,7 @@ type Meeting struct {
 	Topic     string    `json:"topic"`
 	Records   []Record  `json:"recording_files"`
 	StartTime time.Time `json:"start_time"`
-	DateTime  string    `json:"-"`
+	DateTime  string    `json:"date_time"`
 }
 
 // Record describes the records in recording_file array field

@@ -163,7 +163,7 @@ func (s *SQLiteStorage) ListMeetings() ([]model.Meeting, error) {
 	var meetings []model.Meeting
 	for rows.Next() {
 		meeting := model.Meeting{}
-		err := rows.Scan(&meeting.UUID, &meeting.Id, &meeting.Topic, &meeting.StartTime)
+		err := rows.Scan(&meeting.UUID, &meeting.Id, &meeting.Topic, &meeting.DateTime)
 		if err != nil {
 			return nil, err
 		}

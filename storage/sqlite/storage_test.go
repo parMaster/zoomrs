@@ -129,4 +129,12 @@ func Test_SqliteStorage(t *testing.T) {
 	assert.Equal(t, model.Queued, records[0].Status)
 	assert.Equal(t, model.Queued, records[1].Status)
 	assert.Equal(t, model.Queued, records[2].Status)
+
+	// List meetings
+	meetings, err := store.ListMeetings()
+	assert.NoError(t, err)
+	assert.Equal(t, 1, len(meetings))
+	assert.Equal(t, testMeeting.UUID, meetings[0].UUID)
+	assert.Equal(t, testMeeting.Id, meetings[0].Id)
+	assert.Equal(t, timeNow.Format(time.DateTime), meetings[0].DateTime)
 }
