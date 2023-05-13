@@ -120,6 +120,21 @@ func (s *SQLiteStorage) GetMeeting(UUID string) (*model.Meeting, error) {
 	return &meeting, nil
 }
 
+// GetMeeting returns a meeting from the database
+func (s *SQLiteStorage) GetMeetingById(Id string) (*model.Meeting, error) {
+	q := "SELECT * FROM `meetings` WHERE id = $1"
+	row := s.DB.QueryRowContext(s.ctx, q, Id)
+	meeting := model.Meeting{}
+	err := row.Scan(&meeting.UUID, &meeting.Id, &meeting.Topic, &meeting.DateTime)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, storage.ErrNoRows
+		}
+		return nil, err
+	}
+	return &meeting, nil
+}
+
 // GetRecords returns records of specific meeting from the database
 func (s *SQLiteStorage) GetRecords(UUID string) ([]model.Record, error) {
 	q := "SELECT * FROM `records` WHERE meetingId = $1"

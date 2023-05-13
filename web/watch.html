@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="X-UA-Compatible" content="ie=edge">
+  <title>Watch Meeting</title>
+</head>
+
+<body>
+
+	<script type="text/javascript">
+		// Get the meeting id from the URL
+		var meetingId = window.location.pathname.split("/").pop();
+		// Get the meeting details from the server
+		// /watchMeeting/<meetingId>
+		$.ajax({
+			url: base_url + "/watchMeeting/" + meetingId,
+			type: "GET",
+			dataType: "json",
+			success: function(data) {
+				// If the meeting is not found, redirect to the home page
+				if (data["status"] == "error") {
+					window.location.href = base_url;
+				}
+				// If the meeting is found, show the meeting details
+				else {
+					// Set the meeting topic
+					$("#meetingTopic").text(data["topic"]);
+					// Set the meeting id
+					$("#meetingId").text(data["id"]);
+				}
+			}
+		});
+		
+
+	</script>
+
+	
+</body>

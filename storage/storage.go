@@ -13,6 +13,7 @@ var (
 type Storer interface {
 	SaveMeeting(meeting model.Meeting) error
 	GetMeeting(UUID string) (*model.Meeting, error)
+	GetMeetingById(Id string) (*model.Meeting, error)
 	ListMeetings() ([]model.Meeting, error)
 	GetRecords(UUID string) ([]model.Record, error)
 	DeleteMeeting(UUID string) error

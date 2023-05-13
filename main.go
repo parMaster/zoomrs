@@ -26,6 +26,9 @@ import (
 //go:embed web/index.html
 var index_html string
 
+//go:embed web/watch.html
+var watch_html string
+
 type Server struct {
 	cfg    *config.Parameters
 	client *ZoomClient
@@ -118,6 +121,56 @@ func (s *Server) router() http.Handler {
 		resp := map[string]interface{}{
 			"data": m,
 		}
+		json.NewEncoder(rw).Encode(resp)
+	})
+
+	router.Get("/watch/{id}", func(rw http.ResponseWriter, r *http.Request) {
+		id := chi.URLParam(r, "id")
+		if id == "" {
+			rw.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		if s.cfg.Server.Dbg {
+			if b, err := os.ReadFile("web/watch.html"); err == nil {
+				rw.Write([]byte(b))
+			}
+		} else {
+			rw.Write([]byte(watch_html))
+		}
+	})
+
+	router.Get("/watchMeeting/{id}", func(rw http.ResponseWriter, r *http.Request) {
+		id := chi.URLParam(r, "id")
+		if id == "" {
+			rw.WriteHeader(http.StatusBadRequest)
+			return
+		}
+
+		meeting, err := s.store.GetMeetingById(id)
+		if err != nil {
+			log.Printf("[ERROR] failed to get meeting, %v", err)
+			rw.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+
+		if meeting == nil {
+			rw.WriteHeader(http.StatusNotFound)
+			return
+		}
+
+		records, err := s.store.GetRecords(meeting.UUID)
+		if err != nil {
+			log.Printf("[ERROR] failed to get records, %v", err)
+			rw.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+
+		resp := map[string]interface{}{
+			"meeting": meeting,
+			"records": records,
+		}
+
+		rw.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(rw).Encode(resp)
 	})
 
