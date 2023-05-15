@@ -71,6 +71,11 @@ func (r *Repository) SyncMeetings(meetings *[]model.Meeting) error {
 		return nil
 	}
 
+	if len(r.syncTypes) == 0 {
+		log.Printf("[DEBUG] No sync types configured")
+		return nil
+	}
+
 	var saved int
 	for _, meeting := range *meetings {
 		_, err := r.store.GetMeeting(meeting.UUID)
@@ -92,6 +97,10 @@ func (r *Repository) SyncMeetings(meetings *[]model.Meeting) error {
 					return fmt.Errorf("failed to save meeting %s, %v", meeting.UUID, err)
 				}
 				saved++
+				if r.cfg.Server.Dbg && saved >= 2 {
+					log.Printf("[DEBUG] Skipping rest of the meetings due to debug mode")
+					break
+				}
 				continue
 			}
 			return fmt.Errorf("failed to get meeting %s, %v", meeting.UUID, err)

@@ -6,17 +6,27 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta http-equiv="X-UA-Compatible" content="ie=edge">
   <title>Watch Meeting</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.6.0/jquery.min.js"></script>
 </head>
-
 <body>
 
 	<script type="text/javascript">
-		// Get the meeting id from the URL
-		var meetingId = window.location.pathname.split("/").pop();
+		var base_url = window.location.origin;
+		// Get the accesKey from the URL
+		var params = window.location.pathname.split("/")
+		var accessKey = params.pop();
+		console.log(accessKey);
+
+		// Get the uuid from the URL
+		const queryString = window.location.search;
+		const urlParams = new URLSearchParams(queryString);
+		const uuid = urlParams.get('uuid');
+		console.log(uuid);
+
 		// Get the meeting details from the server
-		// /watchMeeting/<meetingId>
+		// /watchMeeting/<accessKey>?uuid=<uuid>
 		$.ajax({
-			url: base_url + "/watchMeeting/" + meetingId,
+			url: base_url + "/watchMeeting/" + accessKey + "?uuid="+uuid,
 			type: "GET",
 			dataType: "json",
 			success: function(data) {
@@ -33,7 +43,7 @@
 				}
 			}
 		});
-		
+
 
 	</script>
 

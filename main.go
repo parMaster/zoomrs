@@ -2,10 +2,12 @@ package main
 
 import (
 	"context"
+	"crypto/md5"
 	_ "embed"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"os"
@@ -118,15 +120,25 @@ func (s *Server) router() http.Handler {
 			rw.WriteHeader(http.StatusInternalServerError)
 			return
 		}
+
+		h := md5.New()
+		// mix in an accessKey for each meeting to be used in watchMeeting
+		for i := range m {
+			s := m[i].UUID + s.cfg.Server.AccessKeySalt
+			log.Printf("[DEBUG] s: %s", s)
+			io.WriteString(h, s)
+			m[i].AccessKey = fmt.Sprintf("%x", h.Sum(nil))
+		}
+
 		resp := map[string]interface{}{
 			"data": m,
 		}
 		json.NewEncoder(rw).Encode(resp)
 	})
 
-	router.Get("/watch/{id}", func(rw http.ResponseWriter, r *http.Request) {
-		id := chi.URLParam(r, "id")
-		if id == "" {
+	router.Get("/watch/{accessKey}", func(rw http.ResponseWriter, r *http.Request) {
+		accessKey := chi.URLParam(r, "accessKey")
+		if accessKey == "" {
 			rw.WriteHeader(http.StatusBadRequest)
 			return
 		}
@@ -139,26 +151,42 @@ func (s *Server) router() http.Handler {
 		}
 	})
 
-	router.Get("/watchMeeting/{id}", func(rw http.ResponseWriter, r *http.Request) {
-		id := chi.URLParam(r, "id")
-		if id == "" {
+	router.Get("/watchMeeting/{accessKey}", func(rw http.ResponseWriter, r *http.Request) {
+		// uuid is get parameter
+		accessKey := chi.URLParam(r, "accessKey")
+		uuid := r.URL.Query().Get("uuid")
+		log.Printf("[DEBUG] /watchMeeting/%s?uuid=%s", accessKey, uuid)
+
+		if accessKey == "" || uuid == "" {
 			rw.WriteHeader(http.StatusBadRequest)
 			return
 		}
 
-		meeting, err := s.store.GetMeetingById(id)
+		// check accessKey
+		h := md5.New()
+		saltedUUID := uuid + s.cfg.Server.AccessKeySalt
+		log.Printf("[DEBUG] salted uuid: %s", saltedUUID)
+		io.WriteString(h, saltedUUID)
+		key := fmt.Sprintf("%x", h.Sum(nil))
+		log.Printf("[DEBUG] accessKey: %s, key: %s", accessKey, key)
+		if accessKey != key {
+			rw.WriteHeader(http.StatusForbidden)
+			return
+		}
+
+		meeting, err := s.store.GetMeeting(uuid)
+		log.Printf("[DEBUG] meeting: %+v", meeting)
 		if err != nil {
+			if err == storage.ErrNoRows {
+				rw.WriteHeader(http.StatusNotFound)
+				return
+			}
 			log.Printf("[ERROR] failed to get meeting, %v", err)
 			rw.WriteHeader(http.StatusInternalServerError)
 			return
 		}
 
-		if meeting == nil {
-			rw.WriteHeader(http.StatusNotFound)
-			return
-		}
-
-		records, err := s.store.GetRecords(meeting.UUID)
+		records, err := s.store.GetRecordsInfo(meeting.UUID)
 		if err != nil {
 			log.Printf("[ERROR] failed to get records, %v", err)
 			rw.WriteHeader(http.StatusInternalServerError)

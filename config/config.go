@@ -25,8 +25,9 @@ type Client struct {
 }
 
 type Server struct {
-	Listen string `yaml:"listen"` // Address or/and Port for http server to listen to
-	Dbg    bool   `yaml:"dbg"`    // Debug mode
+	Listen        string `yaml:"listen"`          // Address or/and Port for http server to listen to
+	Dbg           bool   `yaml:"dbg"`             // Debug mode
+	AccessKeySalt string `yaml:"access_key_salt"` // Salt for access key generation
 }
 
 type Storage struct {

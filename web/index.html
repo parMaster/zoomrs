@@ -48,7 +48,9 @@
 </div>
 
 <script type="text/javascript" class="init">
-	var base_url = window.location.origin;
+
+var base_url = window.location.origin;
+
 $(document).ready(function() {
 	// Create a new DataTable object
 	table = $('#list').DataTable({
@@ -93,7 +95,8 @@ $(document).ready(function() {
 	// When the share link is clicked, show the modal dialog box
 	$('#list tbody').on('click', '.share', function () {
 		var data = table.row( $(this).parents('tr') ).data();
-		$('#shareLink').val(base_url+'/watch/'+data.id+'');
+
+		$('#shareLink').val(base_url+'/watch/'+data.access_key+'?uuid='+data.uuid);
 		$('#shareModal').modal('show');
 		// Copy button copies the link to clipboard
 		$('.btn-primary').click(function() {

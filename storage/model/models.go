@@ -47,6 +47,7 @@ type Meeting struct {
 	Records   []Record  `json:"recording_files"`
 	StartTime time.Time `json:"start_time"`
 	DateTime  string    `json:"date_time"`
+	AccessKey string    `json:"access_key"`
 }
 
 // Record describes the records in recording_file array field
@@ -55,11 +56,22 @@ type Record struct {
 	MeetingId     string       `json:"meeting_id"` // foreign key to Meeting.UUID
 	Type          RecordType   `json:"recording_type"`
 	StartTime     time.Time    `json:"recording_start"` // DateTime in RFC3339
-	DateTime      string       `json:"-"`
+	DateTime      string       `json:"date_time"`
 	FileExtension string       `json:"file_extension"` // M4A, MP4
 	FileSize      int          `json:"file_size"`      // bytes
 	DownloadURL   string       `json:"download_url"`
 	PlayURL       string       `json:"play_url"`
-	Status        RecordStatus `json:"-"`
-	FilePath      string       `json:"-"` // local file path
+	Status        RecordStatus `json:"status"`
+	FilePath      string       `json:"file_path"` // local file path
+}
+
+// RecordInfo describes the records for API response
+type RecordInfo struct {
+	Id        string       `json:"id"`         // primary key for Record
+	MeetingId string       `json:"meeting_id"` // foreign key to Meeting.UUID
+	Type      RecordType   `json:"recording_type"`
+	DateTime  string       `json:"date_time"`
+	FileSize  int          `json:"file_size"` // bytes
+	Status    RecordStatus `json:"status"`
+	FilePath  string       `json:"file_path"` // local file path
 }

@@ -16,6 +16,7 @@ type Storer interface {
 	GetMeetingById(Id string) (*model.Meeting, error)
 	ListMeetings() ([]model.Meeting, error)
 	GetRecords(UUID string) ([]model.Record, error)
+	GetRecordsInfo(UUID string) ([]model.RecordInfo, error)
 	DeleteMeeting(UUID string) error
 	UpdateRecord(Id string, status model.RecordStatus, path string) error
 	GetQueuedRecord() (*model.Record, error)

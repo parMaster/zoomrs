@@ -166,6 +166,34 @@ func (s *SQLiteStorage) GetRecords(UUID string) ([]model.Record, error) {
 	return records, nil
 }
 
+// GetRecords returns records of specific meeting from the database
+func (s *SQLiteStorage) GetRecordsInfo(UUID string) ([]model.RecordInfo, error) {
+	q := "SELECT id, meetingId, type, startTime, fileSize, status, path FROM `records` WHERE meetingId = $1"
+	rows, err := s.DB.QueryContext(s.ctx, q, UUID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var records []model.RecordInfo
+	for rows.Next() {
+		record := model.RecordInfo{}
+		err := rows.Scan(
+			&record.Id,
+			&record.MeetingId,
+			&record.Type,
+			&record.DateTime,
+			&record.FileSize,
+			&record.Status,
+			&record.FilePath)
+		if err != nil {
+			return nil, err
+		}
+		records = append(records, record)
+	}
+	return records, nil
+}
+
 // ListMeetings returns a list of meetings from the database
 func (s *SQLiteStorage) ListMeetings() ([]model.Meeting, error) {
 	q := "SELECT * FROM `meetings` ORDER BY startTime DESC"
