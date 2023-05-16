@@ -43,7 +43,8 @@
 				<input type="text" class="form-control" id="shareLink" value="" readonly>
 			</div>
 			<div class="modal-footer">
-			<button type="button" class="btn btn-primary">Copy</button>
+			<button type="button" id="open" class="btn btn-link">Open</button>
+			<button type="button" class="btn btn-primary">Copy Link</button>
 			<button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
 			</div>
 		</div>
@@ -112,7 +113,13 @@ $(document).ready(function() {
 
 	// When the modal dialog box is closed, reset the copy button text
 	$('#shareModal').on('hidden.bs.modal', function () {
-		$('.btn-primary').text('Copy');
+		$('.btn-primary').text('Copy Link');
+	});
+
+	// When the open button is clicked, open the link in a new tab
+	$('#open').click(function() {
+		var url = $('#shareLink').val();
+		window.open(url, '_blank');
 	});
 
 
