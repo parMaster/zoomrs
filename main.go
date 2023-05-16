@@ -121,13 +121,13 @@ func (s *Server) router() http.Handler {
 			return
 		}
 
-		h := md5.New()
 		// mix in an accessKey for each meeting to be used in watchMeeting
 		for i := range m {
 			s := m[i].UUID + s.cfg.Server.AccessKeySalt
-			log.Printf("[DEBUG] s: %s", s)
+			h := md5.New()
 			io.WriteString(h, s)
 			m[i].AccessKey = fmt.Sprintf("%x", h.Sum(nil))
+			log.Printf("[DEBUG] salted uuid: %s, accessKey: %s", s, m[i].AccessKey)
 		}
 
 		resp := map[string]interface{}{
@@ -226,7 +226,7 @@ func (s *Server) router() http.Handler {
 	})
 
 	fs := http.FileServer(http.Dir(s.cfg.Storage.Repository))
-	router.Handle("/repo/*", http.StripPrefix("/repo", fs))
+	router.Handle("/"+s.cfg.Storage.Repository+"/*", http.StripPrefix("/"+s.cfg.Storage.Repository, fs))
 
 	return router
 }

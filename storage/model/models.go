@@ -61,7 +61,7 @@ type Record struct {
 	FileSize      int          `json:"file_size"`      // bytes
 	DownloadURL   string       `json:"download_url"`
 	PlayURL       string       `json:"play_url"`
-	Status        RecordStatus `json:"status"`
+	Status        RecordStatus `json:"-"`
 	FilePath      string       `json:"file_path"` // local file path
 }
 

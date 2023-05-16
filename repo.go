@@ -92,6 +92,10 @@ func (r *Repository) SyncMeetings(meetings *[]model.Meeting) error {
 				}
 				meeting.Records = records
 
+				if len(meeting.Records) == 0 {
+					log.Printf("[DEBUG] Skipping meeting %s - no records to sync", meeting.UUID)
+					continue
+				}
 				err := r.store.SaveMeeting(meeting)
 				if err != nil {
 					return fmt.Errorf("failed to save meeting %s, %v", meeting.UUID, err)
