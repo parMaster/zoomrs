@@ -44,7 +44,7 @@
 			</div>
 			<div class="modal-footer">
 			<button type="button" id="open" class="btn btn-link">Open</button>
-			<button type="button" class="btn btn-primary">Copy Link</button>
+			<button type="button" id="copy" class="btn btn-primary">Copy Link</button>
 			<button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
 			</div>
 		</div>
@@ -90,7 +90,7 @@ $(document).ready(function() {
 			},
 			{ data: 'uuid',
 				render: function ( data, type, row, meta ) {
-					return '<button class="share" id="'+data+'">Share</button>';
+					return '<button type="button" class="share btn-sm btn-primary" id="'+data+'">Share</button>';
 				}
 			}
 		],
@@ -103,17 +103,17 @@ $(document).ready(function() {
 		$('#shareLink').val(base_url+'/watch/'+data.access_key+'?uuid='+data.uuid);
 		$('#shareModal').modal('show');
 		// Copy button copies the link to clipboard
-		$('.btn-primary').click(function() {
+		$('#copy').click(function() {
 			$('#shareLink').select();
 			document.execCommand("copy");
 			// notify user that link has been copied
-			$('.btn-primary').text('Copied!');
+			$('#copy').text('Copied!');
 		});
 	});
 
 	// When the modal dialog box is closed, reset the copy button text
 	$('#shareModal').on('hidden.bs.modal', function () {
-		$('.btn-primary').text('Copy Link');
+		$('#copy').text('Copy Link');
 	});
 
 	// When the open button is clicked, open the link in a new tab
