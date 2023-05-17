@@ -19,8 +19,6 @@ func Test_LoadConfig(t *testing.T) {
 			Type:       "sqlite",
 			Path:       "file:.tmp/data1.db?mode=rwc&_journal_mode=WAL",
 			Repository: ".tmp",
-			// SyncTypes:  []string{"shared_screen_with_gallery_view", "chat_file"},
-			SyncTypes: []string{"audio_only", "chat_file"},
 		},
 		Client: Client{
 			DeleteDownloaded: false,
@@ -41,6 +39,12 @@ func Test_LoadConfig(t *testing.T) {
 	assert.NotEmpty(t, conf.Client.Secret)
 	assert.Equal(t, expected.Client.DeleteDownloaded, conf.Client.DeleteDownloaded)
 	assert.Equal(t, expected.Client.TrashDownloaded, conf.Client.TrashDownloaded)
+
+	assert.NotEmpty(t, conf.Syncable)
+	assert.NotEmpty(t, conf.Syncable.Important)
+	assert.NotEmpty(t, conf.Syncable.Alternative)
+	assert.NotEmpty(t, conf.Syncable.Optional)
+	assert.NotEmpty(t, conf.Syncable.MinDuration)
 
 	t.Logf("%v+", conf.Storage)
 }

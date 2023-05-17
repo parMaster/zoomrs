@@ -10,9 +10,10 @@ import (
 
 // Parameters is the main configuration struct
 type Parameters struct {
-	Server  Server  `yaml:"server"`
-	Client  Client  `yaml:"client"`
-	Storage Storage `yaml:"storage"`
+	Server   Server   `yaml:"server"`
+	Client   Client   `yaml:"client"`
+	Storage  Storage  `yaml:"storage"`
+	Syncable Syncable `yaml:"syncable"`
 }
 
 // Client is the Zoom client configuration
@@ -33,10 +34,20 @@ type Server struct {
 type Storage struct {
 	// Type of storage to use
 	// Currently supported: sqlite, memory
-	Type       string   `yaml:"type"`
-	Path       string   `yaml:"path"` // Path to the database file
-	Repository string   `yaml:"repository"`
-	SyncTypes  []string `yaml:"sync_types"`
+	Type       string `yaml:"type"`
+	Path       string `yaml:"path"` // Path to the database file
+	Repository string `yaml:"repository"`
+}
+
+type Syncable struct {
+	// Sync types important to download
+	Important []string `yaml:"important"`
+	// Sync types to download if important is not available
+	Alternative []string `yaml:"alternative"`
+	// Sync types to download if possible
+	Optional []string `yaml:"optional"`
+	// Minutes - Minimal duration meeting. Meetings shorter than this value will not be synced
+	MinDuration int `yaml:"min_duration"`
 }
 
 // New creates a new Parameters from the given file

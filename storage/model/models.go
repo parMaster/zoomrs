@@ -47,6 +47,7 @@ type Meeting struct {
 	Records   []Record  `json:"recording_files"`
 	StartTime time.Time `json:"start_time"`
 	DateTime  string    `json:"date_time"`
+	Duration  int       `json:"duration"`
 	AccessKey string    `json:"access_key"`
 }
 

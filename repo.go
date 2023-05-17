@@ -21,24 +21,37 @@ type Client interface {
 	DeleteMeetingRecordings(meetingId string, delete bool) error
 }
 
+type syncable struct {
+	Important   map[model.RecordType]bool
+	Alternative map[model.RecordType]bool
+	Optional    map[model.RecordType]bool
+}
+
 type Repository struct {
-	store     storage.Storer
-	client    Client
-	cfg       config.Parameters
-	syncTypes map[model.RecordType]bool
+	store    storage.Storer
+	client   Client
+	cfg      config.Parameters
+	syncable syncable
 }
 
 func NewRepository(store storage.Storer, client Client, cfg config.Parameters) *Repository {
 
-	var syncTypes map[model.RecordType]bool
-	if len(cfg.Storage.SyncTypes) > 0 {
-		syncTypes = make(map[model.RecordType]bool)
-		for _, t := range cfg.Storage.SyncTypes {
-			syncTypes[model.RecordType(t)] = true
-		}
+	sync := syncable{
+		Important:   make(map[model.RecordType]bool),
+		Alternative: make(map[model.RecordType]bool),
+		Optional:    make(map[model.RecordType]bool),
+	}
+	for _, t := range cfg.Syncable.Important {
+		sync.Important[model.RecordType(t)] = true
+	}
+	for _, t := range cfg.Syncable.Alternative {
+		sync.Alternative[model.RecordType(t)] = true
+	}
+	for _, t := range cfg.Syncable.Optional {
+		sync.Optional[model.RecordType(t)] = true
 	}
 
-	return &Repository{store: store, client: client, cfg: cfg, syncTypes: syncTypes}
+	return &Repository{store: store, client: client, cfg: cfg, syncable: sync}
 }
 
 func (r *Repository) SyncJob(ctx context.Context) {
@@ -71,47 +84,71 @@ func (r *Repository) SyncMeetings(meetings *[]model.Meeting) error {
 		return nil
 	}
 
-	if len(r.syncTypes) == 0 {
+	if len(r.syncable.Important)+len(r.syncable.Alternative)+len(r.syncable.Optional) == 0 {
 		log.Printf("[DEBUG] No sync types configured")
 		return nil
 	}
 
-	var saved int
+	var saved, skipDuration, skipEmpty, skipExists int
 	for _, meeting := range *meetings {
+		if meeting.Duration < r.cfg.Syncable.MinDuration {
+			log.Printf("[DEBUG] Skipping meeting %s - duration %d is less than %d", meeting.UUID, meeting.Duration, r.cfg.Syncable.MinDuration)
+			skipDuration++
+			continue
+		}
 		_, err := r.store.GetMeeting(meeting.UUID)
 		if err != nil {
 			if err == storage.ErrNoRows {
 
 				// filter out meeting recordings that are not supported
-				var records []model.Record
+				// and sort them by importance
+				var important, alternative, optional []model.Record
 				for _, record := range meeting.Records {
-					_, ok := r.syncTypes[record.Type]
-					if ok {
-						records = append(records, record)
+					if _, ok := r.syncable.Important[record.Type]; ok {
+						important = append(important, record)
+					}
+					if _, ok := r.syncable.Alternative[record.Type]; ok {
+						alternative = append(alternative, record)
+					}
+					if _, ok := r.syncable.Optional[record.Type]; ok {
+						optional = append(optional, record)
 					}
 				}
-				meeting.Records = records
+
+				meeting.Records = []model.Record{}
+
+				// if there are no important records, use alternative
+				if len(important) > 0 {
+					meeting.Records = important
+				} else if len(alternative) > 0 {
+					meeting.Records = alternative
+				}
+				// use optional if there any
+				if len(optional) > 0 {
+					meeting.Records = append(meeting.Records, optional...)
+				}
 
 				if len(meeting.Records) == 0 {
 					log.Printf("[DEBUG] Skipping meeting %s - no records to sync", meeting.UUID)
+					skipEmpty++
 					continue
 				}
+
 				err := r.store.SaveMeeting(meeting)
 				if err != nil {
 					return fmt.Errorf("failed to save meeting %s, %v", meeting.UUID, err)
 				}
 				saved++
-				if r.cfg.Server.Dbg && saved >= 2 {
-					log.Printf("[DEBUG] Skipping rest of the meetings due to debug mode")
-					break
-				}
+
 				continue
 			}
 			return fmt.Errorf("failed to get meeting %s, %v", meeting.UUID, err)
+		} else {
+			skipExists++
 		}
 	}
 
-	log.Printf("[DEBUG] Saved %d new meetings", saved)
+	log.Printf("[DEBUG] Saved %d new meetings. Skipped: %d (already saved) %d (too short), %d (empty)", saved, skipExists, skipDuration, skipEmpty)
 	return nil
 }
 
@@ -163,6 +200,11 @@ func (r *Repository) DownloadJob(ctx context.Context) {
 
 // DownloadRecord downloads the record from Zoom
 func (r *Repository) DownloadRecord(record *model.Record) error {
+	// if r.cfg.Server.Dbg {
+	// 	log.Printf("[DEBUG] Downloading %s record %s meetingId %s", record.Type, record.Id, record.MeetingId)
+	// 	return nil
+	// }
+
 	token, err := r.client.GetToken()
 	if err != nil {
 		return err

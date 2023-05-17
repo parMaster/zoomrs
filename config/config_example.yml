@@ -11,5 +11,8 @@ storage:
   type: sqlite
   path: file:.tmp/data1.db?mode=rwc&_journal_mode=WAL
   repository: .tmp # Path to download files
-  # sync_types: ["shared_screen_with_gallery_view", "chat_file"]
-  sync_types: ["audio_only", "chat_file"]
+syncable:
+    important: ["shared_screen_with_gallery_view"]
+    alternative: ["shared_screen_with_speaker_view"]
+    optional: ["chat_file"]
+    min_duration: 3 # minutes

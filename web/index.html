@@ -16,7 +16,6 @@
 	<script src="https://cdn.datatables.net/1.13.4/js/jquery.dataTables.min.js"></script>
 </head>
 
-
 <body>
 <div class="container" style="width:100%; margin:10px">
 	<table id="list" class="display" style="width: 100%;">
@@ -77,7 +76,8 @@ $(document).ready(function() {
 			{ data: 'id',
 				// format id like 123 1234 1234 and make it monospace font
 				render: function ( data, type, row, meta ) {
-					return '<span style="font-family: monospace; font-size: medium; white-space:nowrap;">' + data.toString().replace(/(\d{3})(\d{4})(\d{4})/, "$1 $2 $3") + '</span>';
+					var formattedId = data.toString().replace(/(\d{3})(\d{4})(\d{4})/, "$1 $2 $3");
+					return '<span style="font-family: monospace; font-size: medium; white-space:nowrap;" class="id" role="button" value="' + formattedId + '">' + formattedId + '</span>';
 				},
 			},
 			{ data: 'date_time', 
@@ -122,7 +122,12 @@ $(document).ready(function() {
 		window.open(url, '_blank');
 	});
 
-
+	// When the id is clicked, put the id in the input with type="search". id is in the value of the span that is clicked
+	$('#list tbody').on('click', '.id', function () {
+		var id = $(this).attr('value');
+		$('#list_filter input').val(id);
+		table.search(id).draw();
+	});
 });
 
 </script>
