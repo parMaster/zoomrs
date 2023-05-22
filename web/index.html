@@ -18,6 +18,25 @@
 
 <body>
 <div class="container" style="width:100%; margin:10px">
+	<div class="row">
+		<div class="col-md-9 col-sm-3">
+			<h3>Zoom Records</h3>
+		</div>
+		<div class="col-md-3">
+			<!-- User email and avatar with drop-down menu with Logout button -->
+			<div class="dropdown align-self-end">
+				<button class="btn btn-secondary dropdown-toggle" type="button" id="dropdownMenuButton1" data-bs-toggle="dropdown" aria-expanded="false">
+					<span id="userEmail"></span>
+					<img id="userAvatar" src="" width="30" height="30" class="rounded-circle">
+				</button>
+				<ul class="dropdown-menu" aria-labelledby="dropdownMenuButton1">
+					<li><a class="dropdown-item" href="/auth/google/logout">Logout</a></li>
+				</ul>
+			</div>
+		</div>
+	</div>
+	<div class="row" style="margin-top: 10px;">
+	</div>
 	<table id="list" class="display" style="width: 100%;">
 		<thead>
 			<tr>
@@ -59,12 +78,18 @@ $(document).ready(function() {
 	table = $('#list').DataTable({
 		"lengthMenu": [[15, 50, 100, -1], [15, 50, 100, "All"]],
 		"pagingType": "simple",
-		"pageLength": -1,
+		"pageLength": 100,
 		"processing": true,
 		scrollCollapse: true,
 		order: [[2, 'desc']],
 		ajax: {
 			url: '/listMeetings',
+			// if there is Unauthorized error, redirect to login page
+			error: function (xhr, error, thrown) {
+				if (xhr.status == 401) {
+					window.location.href = '/auth/google/login?from='+encodeURIComponent(window.location.href);
+				}
+			}
 		},
 		columns: [
 			{ data: 'topic',
@@ -100,7 +125,7 @@ $(document).ready(function() {
 	$('#list tbody').on('click', '.share', function () {
 		var data = table.row( $(this).parents('tr') ).data();
 
-		$('#shareLink').val(base_url+'/watch/'+data.access_key+'?uuid='+data.uuid);
+		$('#shareLink').val(base_url+'/watch/'+data.access_key+'?uuid='+encodeURIComponent(data.uuid));
 		$('#shareModal').modal('show');
 		// Copy button copies the link to clipboard
 		$('#copy').click(function() {
@@ -127,6 +152,28 @@ $(document).ready(function() {
 		var id = $(this).attr('value');
 		$('#list_filter input').val(id);
 		table.search(id).draw();
+	});
+
+	// Get the user email and avatar
+	// /auth/user returns the user email and avatar 
+	$.ajax({
+		url: '/auth/user',
+		type: 'GET',
+		success: function(data) {
+			$('#userEmail').text(data.email);
+			$('#userAvatar').attr('src', data.picture);
+		},
+		error: function (xhr, error, thrown) {
+			if (xhr.status == 401) {
+				window.location.href = '/auth/google/login?from='+encodeURIComponent(window.location.href);
+			}
+		}
+	});
+
+	// input with type="search" should be cleared when the search button is clicked
+	$('#list_filter input').on('click', function() {
+		this.value = '';
+		table.search('').draw();
 	});
 });
 

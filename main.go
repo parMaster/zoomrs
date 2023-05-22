@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"crypto/md5"
+	"crypto/sha1"
 	_ "embed"
 	"encoding/json"
 	"errors"
@@ -18,8 +19,13 @@ import (
 	"github.com/parMaster/zoomrs/config"
 	"github.com/parMaster/zoomrs/storage"
 	"github.com/parMaster/zoomrs/storage/sqlite"
+	"golang.org/x/oauth2"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/go-pkgz/auth"
+	"github.com/go-pkgz/auth/avatar"
+	"github.com/go-pkgz/auth/provider"
+	"github.com/go-pkgz/auth/token"
 	"github.com/go-pkgz/lgr"
 	"github.com/go-pkgz/rest"
 	flags "github.com/umputun/go-flags"
@@ -31,16 +37,77 @@ var index_html string
 //go:embed web/watch.html
 var watch_html string
 
+//go:embed web/auth.html
+var auth_html string
+
 type Server struct {
-	cfg    *config.Parameters
-	client *ZoomClient
-	store  storage.Storer
-	ctx    context.Context
+	cfg         *config.Parameters
+	client      *ZoomClient
+	store       storage.Storer
+	ctx         context.Context
+	authService *auth.Service
 }
 
 func NewServer(conf *config.Parameters, ctx context.Context) *Server {
 	client := NewZoomClient(conf.Client)
-	return &Server{cfg: conf, client: client, ctx: ctx}
+	authService, err := NewAuthService(conf.Server)
+	if err != nil {
+		log.Fatalf("[ERROR] failed to init auth service: %e", err)
+	}
+	return &Server{cfg: conf, client: client, ctx: ctx, authService: authService}
+}
+
+func NewAuthService(cfg config.Server) (*auth.Service, error) {
+	options := auth.Opts{
+		SecretReader: token.SecretFunc(func(id string) (string, error) { // secret key for JWT
+			return cfg.JWTSecret, nil
+		}),
+		TokenDuration:  time.Minute * 5, // token expires in 5 minutes
+		CookieDuration: time.Hour * 24,  // cookie expires in 1 day and will enforce re-login
+		Issuer:         "zoom-record-service",
+		URL:            "https://" + cfg.Domain,
+		AvatarStore:    avatar.NewLocalFS("/tmp"),
+		Validator: token.ValidatorFunc(func(_ string, claims token.Claims) bool {
+			// allow access to managers
+			for _, m := range cfg.Managers {
+				if claims.User.Email == m {
+					return true
+				}
+			}
+			return false
+		}),
+		ClaimsUpd: token.ClaimsUpdFunc(func(claims token.Claims) token.Claims { // modify issued token
+			return claims
+		}),
+		Logger:      lgr.Std,
+		DisableXSRF: true,
+	}
+
+	// create auth authService with providers
+	authService := auth.NewService(options)
+
+	c := auth.Client{
+		Cid:     cfg.OAuthClientId,
+		Csecret: cfg.OAuthClientSecret,
+	}
+
+	authService.AddCustomProvider("google", c, provider.CustomHandlerOpt{
+		Endpoint: oauth2.Endpoint{
+			AuthURL:  "https://accounts.google.com/o/oauth2/auth",
+			TokenURL: "https://oauth2.googleapis.com/token",
+		},
+		InfoURL: "https://www.googleapis.com/oauth2/v2/userinfo",
+		MapUserFn: func(data provider.UserData, _ []byte) token.User {
+			userInfo := token.User{
+				ID:    "google_" + token.HashID(sha1.New(), data.Value("username")),
+				Name:  data.Value("nickname"),
+				Email: data.Value("email"),
+			}
+			return userInfo
+		},
+		Scopes: []string{"email"},
+	})
+	return authService, nil
 }
 
 func LoadStorage(ctx context.Context, cfg config.Storage, s *storage.Storer) error {
@@ -99,6 +166,12 @@ func (s *Server) router() http.Handler {
 	router := chi.NewRouter()
 	router.Use(rest.Throttle(5))
 
+	// auth routes
+	authRoutes, avaRoutes := s.authService.Handlers()
+	router.Mount("/auth", authRoutes)
+	router.Mount("/avatar", avaRoutes)
+	m := s.authService.Middleware()
+
 	router.Get("/status", func(rw http.ResponseWriter, r *http.Request) {
 		stats, _ := s.store.Stats()
 
@@ -111,7 +184,7 @@ func (s *Server) router() http.Handler {
 		json.NewEncoder(rw).Encode(resp)
 	})
 
-	router.Get("/listMeetings", func(rw http.ResponseWriter, r *http.Request) {
+	router.With(m.Auth).Get("/listMeetings", func(rw http.ResponseWriter, r *http.Request) {
 		rw.Header().Set("Content-Type", "application/json")
 		rw.Header().Set("Access-Control-Allow-Origin", "*")
 		m, err := s.store.ListMeetings()
@@ -127,7 +200,7 @@ func (s *Server) router() http.Handler {
 			h := md5.New()
 			io.WriteString(h, s)
 			m[i].AccessKey = fmt.Sprintf("%x", h.Sum(nil))
-			log.Printf("[DEBUG] salted uuid: %s, accessKey: %s", s, m[i].AccessKey)
+			// log.Printf("[DEBUG] salted uuid: %s, accessKey: %s", s, m[i].AccessKey)
 		}
 
 		resp := map[string]interface{}{
@@ -148,6 +221,16 @@ func (s *Server) router() http.Handler {
 			}
 		} else {
 			rw.Write([]byte(watch_html))
+		}
+	})
+
+	router.Get("/login", func(rw http.ResponseWriter, r *http.Request) {
+		if s.cfg.Server.Dbg {
+			if b, err := os.ReadFile("web/auth.html"); err == nil {
+				rw.Write([]byte(b))
+			}
+		} else {
+			rw.Write([]byte(auth_html))
 		}
 	})
 
@@ -215,7 +298,16 @@ func (s *Server) router() http.Handler {
 		json.NewEncoder(rw).Encode(meetings)
 	})
 
-	router.Get("/", func(rw http.ResponseWriter, r *http.Request) {
+	router.With(m.Trace).Get("/", func(rw http.ResponseWriter, r *http.Request) {
+		// Check if user logged in
+		userInfo, err := token.GetUserInfo(r)
+		log.Printf("[DEBUG] userInfo: %+v", userInfo)
+		log.Printf("[DEBUG] err: %+v", err)
+		if err != nil || userInfo.Attributes["email"] == "" {
+			http.Redirect(rw, r, "/login", http.StatusFound)
+			return
+		}
+
 		if s.cfg.Server.Dbg {
 			if b, err := os.ReadFile("web/index.html"); err == nil {
 				rw.Write([]byte(b))

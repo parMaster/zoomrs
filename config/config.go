@@ -26,9 +26,14 @@ type Client struct {
 }
 
 type Server struct {
-	Listen        string `yaml:"listen"`          // Address or/and Port for http server to listen to
-	Dbg           bool   `yaml:"dbg"`             // Debug mode
-	AccessKeySalt string `yaml:"access_key_salt"` // Salt for access key generation
+	Listen            string   `yaml:"listen"`              // Address or/and Port for http server to listen to
+	Dbg               bool     `yaml:"dbg"`                 // Debug mode
+	AccessKeySalt     string   `yaml:"access_key_salt"`     // Salt for access key generation
+	Domain            string   `yaml:"domain"`              // Domain name for OAuth
+	OAuthClientId     string   `yaml:"oauth_client_id"`     // OAuth client id
+	OAuthClientSecret string   `yaml:"oauth_client_secret"` // OAuth client secret
+	JWTSecret         string   `yaml:"jwt_secret"`          // JWT secret
+	Managers          []string `yaml:"managers"`            // List of managers emails
 }
 
 type Storage struct {

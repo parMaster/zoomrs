@@ -200,10 +200,10 @@ func (r *Repository) DownloadJob(ctx context.Context) {
 
 // DownloadRecord downloads the record from Zoom
 func (r *Repository) DownloadRecord(record *model.Record) error {
-	// if r.cfg.Server.Dbg {
-	// 	log.Printf("[DEBUG] Downloading %s record %s meetingId %s", record.Type, record.Id, record.MeetingId)
-	// 	return nil
-	// }
+	if r.cfg.Server.Dbg {
+		log.Printf("[DEBUG] Downloading %s record %s meetingId %s", record.Type, record.Id, record.MeetingId)
+		return nil
+	}
 
 	token, err := r.client.GetToken()
 	if err != nil {

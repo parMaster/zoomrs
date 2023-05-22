@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="X-UA-Compatible" content="ie=edge">
+<title>Please Login</title>
+	<link
+		href="data:image/x-icon;base64,AAABAAEAEBAQAAEABAAoAQAAFgAAACgAAAAQAAAAIAAAAAEABAAAAAAAgAAAAAAAAAAAAAAAEAAAAAAAAAAAAAAAeLgzADO4ZAB8uDMAM6K4ADO4dgCUuDMAM7hxALimMwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACDAAAAAAAAAIA3AAAAAAAAgDB2AAAAAACAMHBkAAAAAIAwcGBFAAAAgDBwYEBRAACAMHBgQFASAIAwcGBAUBAggDBwYEBQECCAMHBgQFASAIAwcGBAUQAAgDBwYEUAAACAMHBkAAAAAIAwdgAAAAAAgDcAAAAAAACDAAAAAAAACf/wAAp/8AAKn/AACqfwAAqp8AAKqnAACqqQAAqqoAAKqqAACqqQAAqqcAAKqfAACqfwAAqf8AAKf/AACf/wAA"
+		rel="icon" type="image/x-icon" />
+	<script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.6.0/jquery.min.js"></script>
+	<link href="https://cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/5.1.3/css/bootstrap.min.css" rel="stylesheet"/>
+	<script src="https://cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/5.1.3/js/bootstrap.bundle.min.js"></script>
+</head>
+<body>
+	
+	<div class="container" style="width:100%; margin:10px">
+		<div class="row">
+			<div class="col-md-12">
+				<h1>Please Login</h1>
+				<p>Please login with your Google account</p>
+				<a href="#" class="btn btn-primary">Login with Google</a>
+			</div>
+		</div>
+	</div>
+
+	<script>
+		$(document).ready(function() {
+			$(".btn-primary").attr("href", "/auth/google/login?from=" + encodeURIComponent(window.location.href));
+		});
+	</script>
+
+</body>

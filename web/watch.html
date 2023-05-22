@@ -66,7 +66,7 @@
 		// Get the meeting details from the server
 		// /watchMeeting/<accessKey>?uuid=<uuid>
 		$.ajax({
-			url: base_url + "/watchMeeting/" + accessKey + "?uuid="+uuid,
+			url: base_url + "/watchMeeting/" + accessKey + "?uuid="+encodeURIComponent(uuid),
 			type: "GET",
 			dataType: "json",
 			success: function(data) {
@@ -85,7 +85,7 @@
 					// loop through the data.records and find one with recording_type "shared_screen_with_gallery_view"
 					// and use data.records[i].file_path to set the source of the player
 					for (var i = 0; i < data.records.length; i++) {
-						if (data.records[i].recording_type == "shared_screen_with_gallery_view") {
+						if ((data.records[i].recording_type == "shared_screen_with_gallery_view") || (data.records[i].recording_type == "shared_screen_with_speaker_view")) {
 							$("#player").html('<video id="videoPlayer" style="width:100%" controls><source src="/' + data.records[i].file_path + '" type="video/mp4"></video>');
 							break;
 						}
