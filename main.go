@@ -2,13 +2,9 @@ package main
 
 import (
 	"context"
-	"crypto/md5"
-	"crypto/sha1"
 	_ "embed"
-	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"log"
 	"net/http"
 	"os"
@@ -19,26 +15,11 @@ import (
 	"github.com/parMaster/zoomrs/config"
 	"github.com/parMaster/zoomrs/storage"
 	"github.com/parMaster/zoomrs/storage/sqlite"
-	"golang.org/x/oauth2"
 
-	"github.com/go-chi/chi/v5"
 	"github.com/go-pkgz/auth"
-	"github.com/go-pkgz/auth/avatar"
-	"github.com/go-pkgz/auth/provider"
-	"github.com/go-pkgz/auth/token"
 	"github.com/go-pkgz/lgr"
-	"github.com/go-pkgz/rest"
 	flags "github.com/umputun/go-flags"
 )
-
-//go:embed web/index.html
-var index_html string
-
-//go:embed web/watch.html
-var watch_html string
-
-//go:embed web/auth.html
-var auth_html string
 
 type Server struct {
 	cfg         *config.Parameters
@@ -55,59 +36,6 @@ func NewServer(conf *config.Parameters, ctx context.Context) *Server {
 		log.Fatalf("[ERROR] failed to init auth service: %e", err)
 	}
 	return &Server{cfg: conf, client: client, ctx: ctx, authService: authService}
-}
-
-func NewAuthService(cfg config.Server) (*auth.Service, error) {
-	options := auth.Opts{
-		SecretReader: token.SecretFunc(func(id string) (string, error) { // secret key for JWT
-			return cfg.JWTSecret, nil
-		}),
-		TokenDuration:  time.Minute * 5, // token expires in 5 minutes
-		CookieDuration: time.Hour * 24,  // cookie expires in 1 day and will enforce re-login
-		Issuer:         "zoom-record-service",
-		URL:            "https://" + cfg.Domain,
-		AvatarStore:    avatar.NewLocalFS("/tmp"),
-		Validator: token.ValidatorFunc(func(_ string, claims token.Claims) bool {
-			// allow access to managers
-			for _, m := range cfg.Managers {
-				if claims.User.Email == m {
-					return true
-				}
-			}
-			return false
-		}),
-		ClaimsUpd: token.ClaimsUpdFunc(func(claims token.Claims) token.Claims { // modify issued token
-			return claims
-		}),
-		Logger:      lgr.Std,
-		DisableXSRF: true,
-	}
-
-	// create auth authService with providers
-	authService := auth.NewService(options)
-
-	c := auth.Client{
-		Cid:     cfg.OAuthClientId,
-		Csecret: cfg.OAuthClientSecret,
-	}
-
-	authService.AddCustomProvider("google", c, provider.CustomHandlerOpt{
-		Endpoint: oauth2.Endpoint{
-			AuthURL:  "https://accounts.google.com/o/oauth2/auth",
-			TokenURL: "https://oauth2.googleapis.com/token",
-		},
-		InfoURL: "https://www.googleapis.com/oauth2/v2/userinfo",
-		MapUserFn: func(data provider.UserData, _ []byte) token.User {
-			userInfo := token.User{
-				ID:    "google_" + token.HashID(sha1.New(), data.Value("username")),
-				Name:  data.Value("nickname"),
-				Email: data.Value("email"),
-			}
-			return userInfo
-		},
-		Scopes: []string{"email"},
-	})
-	return authService, nil
 }
 
 func LoadStorage(ctx context.Context, cfg config.Storage, s *storage.Storer) error {
@@ -160,167 +88,6 @@ func (s *Server) startServer(ctx context.Context) {
 	if err := httpServer.Close(); err != nil {
 		log.Printf("[ERROR] failed to close http server, %v", err)
 	}
-}
-
-func (s *Server) router() http.Handler {
-	router := chi.NewRouter()
-	router.Use(rest.Throttle(5))
-
-	// auth routes
-	authRoutes, avaRoutes := s.authService.Handlers()
-	router.Mount("/auth", authRoutes)
-	router.Mount("/avatar", avaRoutes)
-	m := s.authService.Middleware()
-
-	router.Get("/status", func(rw http.ResponseWriter, r *http.Request) {
-		stats, _ := s.store.Stats()
-
-		resp := map[string]interface{}{
-			"status": "OK",
-			"stats":  stats,
-		}
-
-		rw.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(rw).Encode(resp)
-	})
-
-	router.With(m.Auth).Get("/listMeetings", func(rw http.ResponseWriter, r *http.Request) {
-		rw.Header().Set("Content-Type", "application/json")
-		rw.Header().Set("Access-Control-Allow-Origin", "*")
-		m, err := s.store.ListMeetings()
-		if err != nil {
-			log.Printf("[ERROR] failed to list meetings, %v", err)
-			rw.WriteHeader(http.StatusInternalServerError)
-			return
-		}
-
-		// mix in an accessKey for each meeting to be used in watchMeeting
-		for i := range m {
-			s := m[i].UUID + s.cfg.Server.AccessKeySalt
-			h := md5.New()
-			io.WriteString(h, s)
-			m[i].AccessKey = fmt.Sprintf("%x", h.Sum(nil))
-			// log.Printf("[DEBUG] salted uuid: %s, accessKey: %s", s, m[i].AccessKey)
-		}
-
-		resp := map[string]interface{}{
-			"data": m,
-		}
-		json.NewEncoder(rw).Encode(resp)
-	})
-
-	router.Get("/watch/{accessKey}", func(rw http.ResponseWriter, r *http.Request) {
-		accessKey := chi.URLParam(r, "accessKey")
-		if accessKey == "" {
-			rw.WriteHeader(http.StatusBadRequest)
-			return
-		}
-		if s.cfg.Server.Dbg {
-			if b, err := os.ReadFile("web/watch.html"); err == nil {
-				rw.Write([]byte(b))
-			}
-		} else {
-			rw.Write([]byte(watch_html))
-		}
-	})
-
-	router.Get("/login", func(rw http.ResponseWriter, r *http.Request) {
-		if s.cfg.Server.Dbg {
-			if b, err := os.ReadFile("web/auth.html"); err == nil {
-				rw.Write([]byte(b))
-			}
-		} else {
-			rw.Write([]byte(auth_html))
-		}
-	})
-
-	router.Get("/watchMeeting/{accessKey}", func(rw http.ResponseWriter, r *http.Request) {
-		// uuid is get parameter
-		accessKey := chi.URLParam(r, "accessKey")
-		uuid := r.URL.Query().Get("uuid")
-		log.Printf("[DEBUG] /watchMeeting/%s?uuid=%s", accessKey, uuid)
-
-		if accessKey == "" || uuid == "" {
-			rw.WriteHeader(http.StatusBadRequest)
-			return
-		}
-
-		// check accessKey
-		h := md5.New()
-		saltedUUID := uuid + s.cfg.Server.AccessKeySalt
-		log.Printf("[DEBUG] salted uuid: %s", saltedUUID)
-		io.WriteString(h, saltedUUID)
-		key := fmt.Sprintf("%x", h.Sum(nil))
-		log.Printf("[DEBUG] accessKey: %s, key: %s", accessKey, key)
-		if accessKey != key {
-			rw.WriteHeader(http.StatusForbidden)
-			return
-		}
-
-		meeting, err := s.store.GetMeeting(uuid)
-		log.Printf("[DEBUG] meeting: %+v", meeting)
-		if err != nil {
-			if err == storage.ErrNoRows {
-				rw.WriteHeader(http.StatusNotFound)
-				return
-			}
-			log.Printf("[ERROR] failed to get meeting, %v", err)
-			rw.WriteHeader(http.StatusInternalServerError)
-			return
-		}
-
-		records, err := s.store.GetRecordsInfo(meeting.UUID)
-		if err != nil {
-			log.Printf("[ERROR] failed to get records, %v", err)
-			rw.WriteHeader(http.StatusInternalServerError)
-			return
-		}
-
-		resp := map[string]interface{}{
-			"meeting": meeting,
-			"records": records,
-		}
-
-		rw.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(rw).Encode(resp)
-	})
-
-	router.Get("/loadMeetings", func(rw http.ResponseWriter, r *http.Request) {
-		rw.Header().Set("Content-Type", "application/json")
-		rw.Header().Set("Access-Control-Allow-Origin", "*")
-
-		meetings, err := s.client.GetMeetings()
-		if err != nil {
-			log.Printf("[ERROR] failed to get meetings, %v", err)
-			rw.WriteHeader(http.StatusInternalServerError)
-			return
-		}
-		json.NewEncoder(rw).Encode(meetings)
-	})
-
-	router.With(m.Trace).Get("/", func(rw http.ResponseWriter, r *http.Request) {
-		// Check if user logged in
-		userInfo, err := token.GetUserInfo(r)
-		log.Printf("[DEBUG] userInfo: %+v", userInfo)
-		log.Printf("[DEBUG] err: %+v", err)
-		if err != nil || userInfo.Attributes["email"] == "" {
-			http.Redirect(rw, r, "/login", http.StatusFound)
-			return
-		}
-
-		if s.cfg.Server.Dbg {
-			if b, err := os.ReadFile("web/index.html"); err == nil {
-				rw.Write([]byte(b))
-			}
-		} else {
-			rw.Write([]byte(index_html))
-		}
-	})
-
-	fs := http.FileServer(http.Dir(s.cfg.Storage.Repository))
-	router.Handle("/"+s.cfg.Storage.Repository+"/*", http.StripPrefix("/"+s.cfg.Storage.Repository, fs))
-
-	return router
 }
 
 type Options struct {

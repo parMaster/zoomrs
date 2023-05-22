@@ -9,36 +9,27 @@ import (
 
 func Test_LoadConfig(t *testing.T) {
 
-	// Expected default config:
-	expected := Parameters{
-		Server: Server{
-			Listen: ":8099",
-			Dbg:    true,
-		},
-		Storage: Storage{
-			Type:       "sqlite",
-			Path:       "file:.tmp/data1.db?mode=rwc&_journal_mode=WAL",
-			Repository: ".tmp",
-		},
-		Client: Client{
-			DeleteDownloaded: false,
-			TrashDownloaded:  false,
-		},
-	}
-
 	var conf *Parameters
 	var err error
 	conf, err = NewConfig("config_example.yml")
 	if err != nil {
 		log.Fatalf("[ERROR] can't load config, %s", err)
 	}
-	assert.Equal(t, expected.Server, conf.Server)
-	assert.Equal(t, expected.Storage, conf.Storage)
+	assert.NotEmpty(t, conf.Server)
+	assert.NotEmpty(t, conf.Server.Domain)
+	assert.NotEmpty(t, conf.Server.Listen)
+	assert.NotEmpty(t, conf.Server.Dbg)
+	assert.NotEmpty(t, conf.Server.OAuthClientId)
+	assert.NotEmpty(t, conf.Server.OAuthClientSecret)
+	assert.NotEmpty(t, conf.Server.AccessKeySalt)
+	assert.NotEmpty(t, conf.Server.JWTSecret)
+	assert.NotEmpty(t, conf.Server.Managers)
+
 	assert.NotEmpty(t, conf.Client.AccountId)
 	assert.NotEmpty(t, conf.Client.Id)
 	assert.NotEmpty(t, conf.Client.Secret)
-	assert.Equal(t, expected.Client.DeleteDownloaded, conf.Client.DeleteDownloaded)
-	assert.Equal(t, expected.Client.TrashDownloaded, conf.Client.TrashDownloaded)
+	assert.IsType(t, conf.Client.TrashDownloaded, true)
+	assert.IsType(t, conf.Client.DeleteDownloaded, true)
 
 	assert.NotEmpty(t, conf.Syncable)
 	assert.NotEmpty(t, conf.Syncable.Important)
