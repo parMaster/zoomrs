@@ -73,7 +73,7 @@ func (z *ZoomClient) Authorize() error {
 	if err != nil {
 		return err
 	}
-	z.token.ExpiresAt = time.Now().Add(dur)
+	z.token.ExpiresAt = time.Now().Add(dur).Add(-5 * time.Minute)
 
 	return nil
 }
