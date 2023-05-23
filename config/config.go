@@ -32,6 +32,7 @@ type Server struct {
 	Domain            string   `yaml:"domain"`              // Domain name for OAuth
 	OAuthClientId     string   `yaml:"oauth_client_id"`     // OAuth client id
 	OAuthClientSecret string   `yaml:"oauth_client_secret"` // OAuth client secret
+	OAuthDisableXSRF  bool     `yaml:"oauth_disable_xsrf"`  // OAuth disable XSRF setting
 	JWTSecret         string   `yaml:"jwt_secret"`          // JWT secret
 	Managers          []string `yaml:"managers"`            // List of managers emails
 }

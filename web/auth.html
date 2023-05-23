@@ -21,13 +21,40 @@
 				<h1>Please Login</h1>
 				<p>Please login with your Google account</p>
 				<a href="#" class="btn btn-primary">Login with Google</a>
+				<p class="text-muted mt-2"></p>
 			</div>
 		</div>
 	</div>
 
 	<script>
 		$(document).ready(function() {
-			$(".btn-primary").attr("href", "/auth/google/login?from=" + encodeURIComponent(window.location.href));
+			// Set the login link to redirect to the base URL
+			$(".btn-primary").attr("href", "/auth/google/login?from=" + encodeURIComponent(window.location.origin));
+
+			// get user info from /auth/user
+			// if email is not empty, redirect to /
+			$.ajax({
+				url: "/auth/user",
+				type: "GET",
+				dataType: "json",
+				success: function(data) {
+					if (data.email) {
+						// Redirect to /
+						$(".text-muted").text("You are not logged in as "+data.email)
+						// sleep for a second
+						setTimeout(function() {
+							window.location.href = "/";
+						}, 1000);
+					} else {
+						// Show login button
+						$(".btn-primary").show();
+					}
+				},
+				error: function(jqXHR, textStatus, errorThrown) {
+					console.log(textStatus, errorThrown);
+				}
+			});
+
 		});
 	</script>
 

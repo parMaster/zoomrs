@@ -36,7 +36,7 @@ func NewAuthService(cfg config.Server) (*auth.Service, error) {
 			return claims
 		}),
 		Logger:      lgr.Std,
-		DisableXSRF: true,
+		DisableXSRF: cfg.OAuthDisableXSRF,
 	}
 
 	// create auth authService with providers

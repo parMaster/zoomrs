@@ -30,7 +30,7 @@
 					<img id="userAvatar" src="" width="30" height="30" class="rounded-circle">
 				</button>
 				<ul class="dropdown-menu" aria-labelledby="dropdownMenuButton1">
-					<li><a class="dropdown-item" href="/auth/google/logout">Logout</a></li>
+					<li><a class="dropdown-item" id="logout" role="button">Logout</a></li>
 				</ul>
 			</div>
 		</div>
@@ -87,7 +87,7 @@ $(document).ready(function() {
 			// if there is Unauthorized error, redirect to login page
 			error: function (xhr, error, thrown) {
 				if (xhr.status == 401) {
-					window.location.href = '/auth/google/login?from='+encodeURIComponent(window.location.href);
+					window.location.href = '/auth/google/login?from='+encodeURIComponent(window.location.origin);
 				}
 			}
 		},
@@ -165,7 +165,7 @@ $(document).ready(function() {
 		},
 		error: function (xhr, error, thrown) {
 			if (xhr.status == 401) {
-				window.location.href = '/auth/google/login?from='+encodeURIComponent(window.location.href);
+				window.location.href = '/auth/google/login?from='+encodeURIComponent(window.location.origin);
 			}
 		}
 	});
@@ -174,6 +174,22 @@ $(document).ready(function() {
 	$('#list_filter input').on('click', function() {
 		this.value = '';
 		table.search('').draw();
+	});
+
+	// When the logout button is clicked, logout with async ajax call, in case of success redirect to /
+	$('#logout').click(function() {
+		$.ajax({
+			url: '/auth/google/logout',
+			type: 'GET',
+			success: function(data) {
+				window.location.href = '/';
+			},
+			error: function (xhr, error, thrown) {
+				if (xhr.status == 401) {
+					window.location.href = '/auth/google/login?from='+encodeURIComponent(window.location.origin);
+				}
+			}
+		});
 	});
 });
 
