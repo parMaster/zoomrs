@@ -42,6 +42,7 @@
 								<button type="button" class="btn btn-sm btn-outline-dark" data-bs-toggle="tooltip" data-bs-placement="bottom" onclick="document.getElementById('videoPlayer').playbackRate = 1.25;" title="Press '2' to switch to 1.25x speed">1.25x</button>
 								<button type="button" class="btn btn-sm btn-outline-dark" data-bs-toggle="tooltip" data-bs-placement="bottom" onclick="document.getElementById('videoPlayer').playbackRate = 1.5;" title="Press '3' to switch to 1.5x speed">1.5x</button>
 								<button type="button" class="btn btn-sm btn-outline-dark" data-bs-toggle="tooltip" data-bs-placement="bottom" onclick="document.getElementById('videoPlayer').playbackRate = 2;" title="Press '4' to switch to 2x speed">2x</button>
+								<button type="button" class="btn btn-sm btn-outline-dark" data-bs-toggle="tooltip" data-bs-placement="bottom" onclick="document.getElementById('videoPlayer').playbackRate = 2.5;" title="Press '5' to switch to 2.5x speed">2.5x</button>
 							</td>
 						</tr>
 					</tbody>
@@ -102,46 +103,46 @@
 		// set the default speed to normal
 		$("#speeds button:first").addClass("active");
 
-		// when "1" is pressed, set the speed to normal
 		$(document).keypress(function(e) {
+			// when "1" is pressed, set the speed to normal
 			if (e.which == 49) {
 				document.getElementById('videoPlayer').playbackRate = 1;
 				$("#speeds button").removeClass("active");
 				$("#speeds button:first").addClass("active");
 			}
-		});
-		// when "2" is pressed, set the speed to 1.25x
-		$(document).keypress(function(e) {
+			// when "2" is pressed, set the speed to 1.25x
 			if (e.which == 50) {
 				document.getElementById('videoPlayer').playbackRate = 1.25;
 				$("#speeds button").removeClass("active");
 				$("#speeds button:nth-child(2)").addClass("active");
 			}
-		});
-		// when "3" is pressed, set the speed to 1.5x
-		$(document).keypress(function(e) {
+			// when "3" is pressed, set the speed to 1.5x
 			if (e.which == 51) {
 				document.getElementById('videoPlayer').playbackRate = 1.5;
 				$("#speeds button").removeClass("active");
 				$("#speeds button:nth-child(3)").addClass("active");
 			}
-		});
-		// when "4" is pressed, set the speed to 2x
-		$(document).keypress(function(e) {
+			// when "4" is pressed, set the speed to 2x
 			if (e.which == 52) {
 				document.getElementById('videoPlayer').playbackRate = 2;
 				$("#speeds button").removeClass("active");
 				$("#speeds button:nth-child(4)").addClass("active");
 			}
-		});
+			// when "5" is pressed, set the speed to 2.5x
+			if (e.which == 53) {
+				document.getElementById('videoPlayer').playbackRate = 2.5;
+				$("#speeds button").removeClass("active");
+				$("#speeds button:nth-child(5)").addClass("active");
+			}
 
-		// when space is pressed, play/pause the video
-		$(document).keypress(function(e) {
-			if (e.which == 32) {
-				if (document.getElementById('videoPlayer').paused) {
-					document.getElementById('videoPlayer').play();
+			// when "f" is pressed, toggle fullscreen
+			if (e.which == 102) {
+				if (!document.fullscreenElement) {
+					document.getElementById('videoPlayer').requestFullscreen();
 				} else {
-					document.getElementById('videoPlayer').pause();
+					if (document.exitFullscreen) {
+						document.exitFullscreen();
+					}
 				}
 			}
 		});

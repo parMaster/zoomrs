@@ -17,14 +17,12 @@
 </head>
 
 <body>
-<div class="container" style="width:100%; margin:10px">
-	<div class="row">
-		<div class="col-md-9 col-sm-3">
-			<h3>Zoom Records</h3>
-		</div>
-		<div class="col-md-3">
-			<!-- User email and avatar with drop-down menu with Logout button -->
-			<div class="dropdown align-self-end">
+	<header class="bd-header bg-dark py-3 d-flex align-items-stretch border-bottom border-dark">
+		<div class="container-fluid d-flex align-items-center">
+			<h1 class="d-flex align-items-center fs-4 text-white mb-0">
+				Zoom Records Service
+			</h1>
+			<div class="dropdown ms-auto">
 				<button class="btn btn-secondary dropdown-toggle" type="button" id="dropdownMenuButton1" data-bs-toggle="dropdown" aria-expanded="false">
 					<span id="userEmail"></span>
 					<img id="userAvatar" src="" width="30" height="30" class="rounded-circle">
@@ -34,43 +32,42 @@
 				</ul>
 			</div>
 		</div>
-	</div>
-	<div class="row" style="margin-top: 10px;">
-	</div>
-	<table id="list" class="display" style="width: 100%;">
-		<thead>
-			<tr>
-				<th scope="col">Topic</th>
-				<th scope="col">Id</th>
-				<th scope="col">Start Time</th>
-				<th scope="col"></th>
-			</tr>
-		</thead>
-	</table>
-</div>
+	</header>
 
-<!-- Modal dialog box that shows share link -->
-<div class="modal fade" id="shareModal" tabindex="-1" aria-labelledby="shareModalLabel" aria-hidden="true">
-	<div class="modal-dialog">
-		<div class="modal-content">
-			<div class="modal-header">
-			<h5 class="modal-title" id="shareModalLabel">Share Link</h5>
-			<button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-			</div>
-			<div class="modal-body" id="shareModalBody">
-				<input type="text" class="form-control" id="shareLink" value="" readonly>
-			</div>
-			<div class="modal-footer">
-			<button type="button" id="open" class="btn btn-link">Open</button>
-			<button type="button" id="copy" class="btn btn-primary">Copy Link</button>
-			<button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+	<div class="container-lg container-md mt-3">
+		<table id="list" class="display">
+			<thead>
+				<tr>
+					<th scope="col">Topic</th>
+					<th scope="col">Id</th>
+					<th scope="col">Start Time</th>
+					<th scope="col"></th>
+				</tr>
+			</thead>
+		</table>
+	</div>
+
+	<!-- Modal dialog box that shows share link -->
+	<div class="modal fade" id="shareModal" tabindex="-1" aria-labelledby="shareModalLabel" aria-hidden="true">
+		<div class="modal-dialog">
+			<div class="modal-content">
+				<div class="modal-header">
+				<h5 class="modal-title" id="shareModalLabel">Share Link</h5>
+				<button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+				</div>
+				<div class="modal-body" id="shareModalBody">
+					<input type="text" class="form-control" id="shareLink" value="" readonly>
+				</div>
+				<div class="modal-footer">
+				<button type="button" id="open" class="btn btn-link">Open</button>
+				<button type="button" id="copy" class="btn btn-primary">Copy Link</button>
+				<button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+				</div>
 			</div>
 		</div>
 	</div>
-</div>
 
 <script type="text/javascript" class="init">
-
 var base_url = window.location.origin;
 
 $(document).ready(function() {
