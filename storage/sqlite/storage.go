@@ -270,7 +270,7 @@ func (s *SQLiteStorage) GetQueuedRecord() (*model.Record, error) {
 
 // Stats returns the number of records in each status
 func (s *SQLiteStorage) Stats() (map[model.RecordStatus]interface{}, error) {
-	q := "select sum(fileSize)/1000000 as size_mb, sum(fileSize)/1000000000 as size_gb, count(id) as count, status FROM records group by status;"
+	q := "select sum(fileSize)/1048576 as size_mb, sum(fileSize)/1073741824 as size_gb, count(id) as count, status FROM records group by status;"
 	rows, err := s.DB.QueryContext(s.ctx, q)
 	if err != nil {
 		return nil, err
