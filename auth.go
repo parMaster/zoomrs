@@ -18,11 +18,12 @@ func NewAuthService(cfg config.Server) (*auth.Service, error) {
 		SecretReader: token.SecretFunc(func(id string) (string, error) { // secret key for JWT
 			return cfg.JWTSecret, nil
 		}),
-		TokenDuration:  time.Minute * 5, // token expires in 5 minutes
-		CookieDuration: time.Hour * 24,  // cookie expires in 1 day and will enforce re-login
-		Issuer:         "zoom-record-service",
-		URL:            "https://" + cfg.Domain,
-		AvatarStore:    avatar.NewLocalFS("/tmp"),
+		TokenDuration:     time.Minute * 5, // token expires in 5 minutes
+		CookieDuration:    time.Hour * 24,  // cookie expires in 1 day and will enforce re-login
+		Issuer:            "zoom-record-service",
+		URL:               "https://" + cfg.Domain,
+		AvatarStore:       avatar.NewLocalFS("/tmp/zoomrs"),
+		AvatarResizeLimit: 200,
 		Validator: token.ValidatorFunc(func(_ string, claims token.Claims) bool {
 			// allow access to managers
 			for _, m := range cfg.Managers {

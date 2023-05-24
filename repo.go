@@ -187,8 +187,8 @@ func (r *Repository) DownloadJob(ctx context.Context) {
 				log.Printf("[ERROR] failed to download record %s - %v", queued.Id, err)
 				continue
 			}
-			if r.cfg.Client.DeleteDownloaded || r.cfg.Client.TrashDownloaded { // debug switch
-				err := r.client.DeleteMeetingRecordings(queued.MeetingId, true)
+			if r.cfg.Client.DeleteDownloaded || r.cfg.Client.TrashDownloaded {
+				err := r.client.DeleteMeetingRecordings(queued.MeetingId, r.cfg.Client.DeleteDownloaded)
 				if err != nil {
 					log.Printf("[ERROR] failed to delete meeting %s - %v", queued.MeetingId, err)
 					continue
@@ -200,10 +200,6 @@ func (r *Repository) DownloadJob(ctx context.Context) {
 
 // DownloadRecord downloads the record from Zoom
 func (r *Repository) DownloadRecord(record *model.Record) error {
-	if r.cfg.Server.Dbg {
-		log.Printf("[DEBUG] Downloading %s record %s meetingId %s", record.Type, record.Id, record.MeetingId)
-		return nil
-	}
 
 	token, err := r.client.GetToken()
 	if err != nil {
@@ -233,7 +229,6 @@ func (r *Repository) DownloadRecord(record *model.Record) error {
 // PrepareDestination creates directory for the downloaded file
 func (r *Repository) prepareDestination(path string) error {
 	if _, err := os.Stat(path); os.IsNotExist(err) {
-		log.Printf("[DEBUG] Creating directory %s", path)
 		err := os.MkdirAll(path, os.ModePerm)
 		if err != nil {
 			return err

@@ -49,6 +49,11 @@ func (s *Server) router() http.Handler {
 	router.Get("/status", func(rw http.ResponseWriter, r *http.Request) {
 		stats, _ := s.store.Stats()
 
+		if stats == nil {
+			rw.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+
 		resp := map[string]interface{}{
 			"status": "OK",
 			"stats":  stats,
@@ -94,6 +99,11 @@ func (s *Server) router() http.Handler {
 
 	router.Get("/login", func(rw http.ResponseWriter, r *http.Request) {
 		s.responseWithFile("web/auth.html", rw)
+	})
+
+	router.Get("/favicon.ico", func(rw http.ResponseWriter, r *http.Request) {
+		rw.Header().Set("Content-Type", "image/x-icon")
+		s.responseWithFile("web/favicon.ico", rw)
 	})
 
 	router.Get("/watchMeeting/{accessKey}", func(rw http.ResponseWriter, r *http.Request) {

@@ -21,5 +21,5 @@ type Storer interface {
 	UpdateRecord(Id string, status model.RecordStatus, path string) error
 	GetQueuedRecord() (*model.Record, error)
 	ResetFailedRecords() error
-	Stats() (map[model.RecordStatus]int, error)
+	Stats() (map[model.RecordStatus]interface{}, error)
 }
