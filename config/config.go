@@ -23,6 +23,7 @@ type Client struct {
 	Secret           string `yaml:"secret"`
 	DeleteDownloaded bool   `yaml:"delete_downloaded"`
 	TrashDownloaded  bool   `yaml:"trash_downloaded"`
+	DeleteSkipped    bool   `yaml:"delete_skipped"`
 }
 
 type Server struct {
