@@ -94,6 +94,12 @@ func (r *Repository) SyncMeetings(meetings *[]model.Meeting) error {
 		if meeting.Duration < r.cfg.Syncable.MinDuration {
 			log.Printf("[DEBUG] Skipping meeting %s - duration %d is less than %d", meeting.UUID, meeting.Duration, r.cfg.Syncable.MinDuration)
 			skipDuration++
+			if r.cfg.Client.DeleteSkipped {
+				err := r.client.DeleteMeetingRecordings(meeting.UUID, r.cfg.Client.DeleteDownloaded)
+				if err != nil {
+					log.Printf("[ERROR] failed to delete meeting %s - %v", meeting.UUID, err)
+				}
+			}
 			continue
 		}
 		_, err := r.store.GetMeeting(meeting.UUID)
@@ -131,6 +137,12 @@ func (r *Repository) SyncMeetings(meetings *[]model.Meeting) error {
 				if len(meeting.Records) == 0 {
 					log.Printf("[DEBUG] Skipping meeting %s - no records to sync", meeting.UUID)
 					skipEmpty++
+					if r.cfg.Client.DeleteSkipped {
+						err := r.client.DeleteMeetingRecordings(meeting.UUID, r.cfg.Client.DeleteDownloaded)
+						if err != nil {
+							log.Printf("[ERROR] failed to delete meeting %s - %v", meeting.UUID, err)
+						}
+					}
 					continue
 				}
 

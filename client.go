@@ -138,7 +138,7 @@ func (z *ZoomClient) GetMeetings() ([]model.Meeting, error) {
 		}
 		log.Printf("[DEBUG] recordings.NextPageToken = %v", recordings.NextPageToken)
 		params.Set(`next_page_token`, recordings.NextPageToken)
-		time.Sleep(500 * time.Millisecond)
+		time.Sleep(500 * time.Millisecond) // avoid rate limit
 	}
 
 	return meetings, nil
@@ -151,7 +151,7 @@ func (z *ZoomClient) GetMeetings() ([]model.Meeting, error) {
 // - delete bool - true to delete, false to trash
 func (z *ZoomClient) DeleteMeetingRecordings(meetingId string, delete bool) error {
 
-	if !z.cfg.DeleteDownloaded && !z.cfg.TrashDownloaded {
+	if !z.cfg.DeleteDownloaded && !z.cfg.TrashDownloaded && !z.cfg.DeleteSkipped {
 		return errors.New("both delete_downloaded and trash_downloaded are false")
 	}
 
@@ -167,7 +167,7 @@ func (z *ZoomClient) DeleteMeetingRecordings(meetingId string, delete bool) erro
 		action = `delete`
 	}
 	params.Add(`action`, action)
-	log.Printf("[DEBUG] initial params = %s", params.Encode())
+	log.Printf("[DEBUG] deleting with params = %s", params.Encode())
 	req, err := http.NewRequest(http.MethodDelete, "https://api.zoom.us/v2/meetings/"+meetingId+"/recordings?"+params.Encode(), nil)
 	if err != nil {
 		return err
@@ -183,7 +183,8 @@ func (z *ZoomClient) DeleteMeetingRecordings(meetingId string, delete bool) erro
 	}
 	defer res.Body.Close()
 
-	if res.StatusCode != http.StatusNoContent {
+	// 404 StatusNotFound happens when meeting is already deleted or trashed, so we ignore the error
+	if res.StatusCode != http.StatusNoContent && res.StatusCode != http.StatusNotFound {
 		return fmt.Errorf("unable to delete recordings for meeting id: %s, status %d, message: %s", meetingId, res.StatusCode, res.Body)
 	}
 
