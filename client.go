@@ -167,8 +167,11 @@ func (z *ZoomClient) DeleteMeetingRecordings(meetingId string, delete bool) erro
 		action = `delete`
 	}
 	params.Add(`action`, action)
-	log.Printf("[DEBUG] deleting with params = %s", params.Encode())
-	req, err := http.NewRequest(http.MethodDelete, "https://api.zoom.us/v2/meetings/"+meetingId+"/recordings?"+params.Encode(), nil)
+	// https://developers.zoom.us/docs/meeting-sdk/apis/#operation/recordingDelete
+	// If a UUID starts with "/" or contains "//" (example: "/ajXp112QmuoKj4854875=="), you must double encode the UUID before making an API request.
+	q := fmt.Sprintf("https://api.zoom.us/v2/meetings/%s/recordings?%s", url.QueryEscape(url.QueryEscape(meetingId)), params.Encode())
+	log.Printf("[DEBUG] deleting with url = %s, params = %s", q, params.Encode())
+	req, err := http.NewRequest(http.MethodDelete, q, nil)
 	if err != nil {
 		return err
 	}
