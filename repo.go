@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/cavaliergopher/grab/v3"
@@ -197,11 +198,11 @@ func (r *Repository) DownloadJob(ctx context.Context) {
 			log.Printf("[INFO] Downloading %s record %s meetingId %s", queued.Type, queued.Id, queued.MeetingId)
 			downErr := r.DownloadRecord(queued)
 			if downErr != nil {
-				log.Printf("[ERROR] failed to download record %s - %v", queued.Id, downErr)
+				log.Printf("[ERROR] download returned error: %s - %v", queued.Id, downErr)
 				continue
 			}
 			ticker.Reset(1 * time.Second)
-			if downErr == nil && (r.cfg.Client.DeleteDownloaded || r.cfg.Client.TrashDownloaded) {
+			if downErr == nil && r.meetingRecordsLoaded(queued.MeetingId) && (r.cfg.Client.DeleteDownloaded || r.cfg.Client.TrashDownloaded) {
 				err := r.client.DeleteMeetingRecordings(queued.MeetingId, r.cfg.Client.DeleteDownloaded)
 				if err != nil {
 					log.Printf("[ERROR] failed to delete meeting %s - %v", queued.MeetingId, err)
@@ -231,8 +232,24 @@ func (r *Repository) DownloadRecord(record *model.Record) error {
 	resp, err := grab.Get(path, url)
 	if err != nil {
 		r.store.UpdateRecord(record.Id, model.Failed, "")
-		log.Printf("[DEBUG] Failed to download %s, %v", url, err)
-		return err
+		return fmt.Errorf("failed to download %s, %v", url, err)
+	}
+
+	// check if the download was successful
+	if resp.HTTPResponse.StatusCode != 200 {
+		r.store.UpdateRecord(record.Id, model.Failed, "")
+		return fmt.Errorf("failed to download %s, status %d", url, resp.HTTPResponse.StatusCode)
+	}
+	// check if the file is not empty
+	if resp.Size() == 0 || resp.Size() != record.FileSize {
+		r.store.UpdateRecord(record.Id, model.Failed, "")
+		return fmt.Errorf("failed to download %s, size %d", url, resp.Size())
+	}
+
+	// check if resp.Filename extension matches record.FileExtension
+	if resp.Filename[len(resp.Filename)-len(record.FileExtension):] != strings.ToLower(record.FileExtension) {
+		r.store.UpdateRecord(record.Id, model.Failed, "")
+		return fmt.Errorf("failed to download %s, extension %s", url, resp.Filename[len(resp.Filename)-len(record.FileExtension):])
 	}
 
 	log.Printf("[DEBUG] Download saved to %s", resp.Filename)
@@ -249,4 +266,18 @@ func (r *Repository) prepareDestination(path string) error {
 		}
 	}
 	return nil
+}
+
+// meetingRecordsLoaded returns true if all records for the meeting are loaded
+func (r *Repository) meetingRecordsLoaded(meetingId string) bool {
+	records, err := r.store.GetRecords(meetingId)
+	if err != nil {
+		return false
+	}
+	for _, record := range records {
+		if record.Status != model.Downloaded {
+			return false
+		}
+	}
+	return true
 }

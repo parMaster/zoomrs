@@ -59,7 +59,7 @@ type Record struct {
 	StartTime     time.Time    `json:"recording_start"` // DateTime in RFC3339
 	DateTime      string       `json:"date_time"`
 	FileExtension string       `json:"file_extension"` // M4A, MP4
-	FileSize      int          `json:"file_size"`      // bytes
+	FileSize      int64        `json:"file_size"`      // bytes
 	DownloadURL   string       `json:"download_url"`
 	PlayURL       string       `json:"play_url"`
 	Status        RecordStatus `json:"-"`
