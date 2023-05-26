@@ -165,7 +165,7 @@ func (r *Repository) SyncMeetings(meetings *[]model.Meeting) error {
 }
 
 func (r *Repository) DownloadJob(ctx context.Context) {
-	ticker := time.NewTicker(1 * time.Minute)
+	ticker := time.NewTicker(1 * time.Second)
 	for {
 		select {
 		case <-ctx.Done():
@@ -185,6 +185,7 @@ func (r *Repository) DownloadJob(ctx context.Context) {
 					log.Printf("[ERROR] failed to reset failed records, %v", err)
 					continue
 				}
+				ticker.Reset(1 * time.Minute)
 				continue
 			}
 			log.Printf("[ERROR] failed to get queued records, %v", err)
@@ -194,12 +195,13 @@ func (r *Repository) DownloadJob(ctx context.Context) {
 		// download the record
 		if queued != nil {
 			log.Printf("[INFO] Downloading %s record %s meetingId %s", queued.Type, queued.Id, queued.MeetingId)
-			err = r.DownloadRecord(queued)
-			if err != nil {
-				log.Printf("[ERROR] failed to download record %s - %v", queued.Id, err)
+			downErr := r.DownloadRecord(queued)
+			if downErr != nil {
+				log.Printf("[ERROR] failed to download record %s - %v", queued.Id, downErr)
 				continue
 			}
-			if r.cfg.Client.DeleteDownloaded || r.cfg.Client.TrashDownloaded {
+			ticker.Reset(1 * time.Second)
+			if downErr == nil && (r.cfg.Client.DeleteDownloaded || r.cfg.Client.TrashDownloaded) {
 				err := r.client.DeleteMeetingRecordings(queued.MeetingId, r.cfg.Client.DeleteDownloaded)
 				if err != nil {
 					log.Printf("[ERROR] failed to delete meeting %s - %v", queued.MeetingId, err)
