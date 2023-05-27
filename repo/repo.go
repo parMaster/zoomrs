@@ -1,4 +1,4 @@
-package main
+package repo
 
 import (
 	"context"
@@ -10,6 +10,7 @@ import (
 
 	"github.com/cavaliergopher/grab/v3"
 
+	"github.com/parMaster/zoomrs/client"
 	"github.com/parMaster/zoomrs/config"
 	"github.com/parMaster/zoomrs/storage"
 	"github.com/parMaster/zoomrs/storage/model"
@@ -18,7 +19,7 @@ import (
 type Client interface {
 	Authorize() error
 	GetMeetings() ([]model.Meeting, error)
-	GetToken() (*AccessToken, error)
+	GetToken() (*client.AccessToken, error)
 	DeleteMeetingRecordings(meetingId string, delete bool) error
 }
 

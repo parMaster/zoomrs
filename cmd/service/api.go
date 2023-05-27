@@ -2,7 +2,6 @@ package main
 
 import (
 	"crypto/md5"
-	"embed"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -14,10 +13,8 @@ import (
 	"github.com/go-pkgz/auth/token"
 	"github.com/go-pkgz/rest"
 	"github.com/parMaster/zoomrs/storage"
+	"github.com/parMaster/zoomrs/web"
 )
-
-//go:embed web/*
-var web_assets embed.FS
 
 func (s *Server) responseWithFile(file string, rw http.ResponseWriter) error {
 	var html []byte
@@ -25,7 +22,7 @@ func (s *Server) responseWithFile(file string, rw http.ResponseWriter) error {
 	if s.cfg.Server.Dbg {
 		html, err = os.ReadFile(file)
 	} else {
-		html, err = web_assets.ReadFile(file)
+		html, err = web.WebAssets.ReadFile(file)
 	}
 	if err != nil {
 		log.Printf("[ERROR] failed to read %s, %v", file, err)

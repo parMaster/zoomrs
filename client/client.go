@@ -1,4 +1,4 @@
-package main
+package client
 
 import (
 	b64 "encoding/base64"

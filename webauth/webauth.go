@@ -1,4 +1,4 @@
-package main
+package webauth
 
 import (
 	"crypto/sha1"

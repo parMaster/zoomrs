@@ -12,9 +12,12 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/parMaster/zoomrs/client"
 	"github.com/parMaster/zoomrs/config"
+	"github.com/parMaster/zoomrs/repo"
 	"github.com/parMaster/zoomrs/storage"
 	"github.com/parMaster/zoomrs/storage/sqlite"
+	"github.com/parMaster/zoomrs/webauth"
 
 	"github.com/go-pkgz/auth"
 	"github.com/go-pkgz/lgr"
@@ -23,15 +26,15 @@ import (
 
 type Server struct {
 	cfg         *config.Parameters
-	client      *ZoomClient
+	client      *client.ZoomClient
 	store       storage.Storer
 	ctx         context.Context
 	authService *auth.Service
 }
 
 func NewServer(conf *config.Parameters, ctx context.Context) *Server {
-	client := NewZoomClient(conf.Client)
-	authService, err := NewAuthService(conf.Server)
+	client := client.NewZoomClient(conf.Client)
+	authService, err := webauth.NewAuthService(conf.Server)
 	if err != nil {
 		log.Fatalf("[ERROR] failed to init auth service: %e", err)
 	}
@@ -62,7 +65,7 @@ func (s *Server) Run() {
 		log.Fatalf("[ERROR] failed to init storage: %e", err)
 	}
 
-	repo := NewRepository(s.store, s.client, *s.cfg)
+	repo := repo.NewRepository(s.store, s.client, *s.cfg)
 
 	go s.startServer(s.ctx)
 	go repo.SyncJob(s.ctx)
