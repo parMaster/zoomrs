@@ -23,6 +23,7 @@ func (s *Server) responseWithFile(file string, rw http.ResponseWriter) error {
 	if s.cfg.Server.Dbg {
 		html, err = os.ReadFile(file)
 	} else {
+		file = file[4:] // cut off web/ prefix
 		html, err = web.WebAssets.ReadFile(file)
 	}
 	if err != nil {
