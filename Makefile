@@ -30,7 +30,7 @@ status:
 	sudo systemctl status zoomrs.service
 
 deploy:
-	build
+	make build
 	sudo systemctl stop zoomrs.service || true
 	sudo cp dist/zoomrs /usr/bin/
 	sudo chown $(USER):$(GROUP) /usr/bin/zoomrs

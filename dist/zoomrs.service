@@ -1,0 +1,22 @@
+[Unit]
+Description=Zoom Records Service 
+After=network-online.target
+Wants=network-online.target
+
+Wants=nss-lookup.target
+Before=nss-lookup.target
+
+StartLimitBurst=5
+StartLimitIntervalSec=10
+
+[Service]
+Type=simple
+Restart=always
+RestartSec=1
+User=gusto
+ExecStart=/usr/bin/zoomrs --config /etc/zoomrs/config.yml
+StandardOutput=append:/var/log/zoomrs.log
+StandardError=append:/var/log/zoomrs.err
+
+[Install]
+WantedBy=multi-user.target
