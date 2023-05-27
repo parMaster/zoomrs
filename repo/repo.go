@@ -223,7 +223,7 @@ func (r *Repository) DownloadRecord(record *model.Record) error {
 	}
 	r.store.UpdateRecord(record.Id, model.Downloading, "")
 
-	path := r.cfg.Storage.Repository + "/" + record.StartTime.Format("2006-01-02") + "/" + record.Id
+	path := r.cfg.Storage.Repository + "/" + record.DateTime[:10] + "/" + record.Id
 	err = r.prepareDestination(path)
 	if err != nil {
 		return err
