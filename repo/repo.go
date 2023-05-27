@@ -223,13 +223,13 @@ func (r *Repository) DownloadRecord(record *model.Record) error {
 	}
 	r.store.UpdateRecord(record.Id, model.Downloading, "")
 
-	url := record.DownloadURL + "?access_token=" + token.AccessToken
-	path := r.cfg.Storage.Repository + "/" + record.Id
+	path := r.cfg.Storage.Repository + "/" + record.StartTime.Format("2006-01-02") + "/" + record.Id
 	err = r.prepareDestination(path)
 	if err != nil {
 		return err
 	}
 
+	url := record.DownloadURL + "?access_token=" + token.AccessToken
 	resp, err := grab.Get(path, url)
 	if err != nil {
 		r.store.UpdateRecord(record.Id, model.Failed, "")
