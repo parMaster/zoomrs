@@ -72,7 +72,7 @@ type RecordInfo struct {
 	MeetingId string       `json:"meeting_id"` // foreign key to Meeting.UUID
 	Type      RecordType   `json:"recording_type"`
 	DateTime  string       `json:"date_time"`
-	FileSize  int          `json:"file_size"` // bytes
+	FileSize  int64        `json:"file_size"` // bytes
 	Status    RecordStatus `json:"status"`
 	FilePath  string       `json:"file_path"` // local file path
 }
