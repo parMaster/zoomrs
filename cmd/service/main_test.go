@@ -12,6 +12,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+// go test -v ./cmd/service -run ^Test_CheckConsistency$
 // check if all records have corresponding files
 func Test_CheckConsistency(t *testing.T) {
 
@@ -26,9 +27,11 @@ func Test_CheckConsistency(t *testing.T) {
 	assert.NoError(t, err)
 
 	dbPath := cfg.Storage.Path
+	// cut off "file:" prefix
+	dbPath = dbPath[5:]
 	// cut off parameters after ? in dbPath
 	if i := strings.Index(dbPath, "?"); i != -1 {
-		dbPath = dbPath[5:i]
+		dbPath = dbPath[:i]
 	}
 
 	// check if db file exists

@@ -11,6 +11,7 @@ require (
 	github.com/mattn/go-sqlite3 v1.14.16
 	github.com/stretchr/testify v1.8.2
 	github.com/umputun/go-flags v1.5.1
+	golang.org/x/oauth2 v0.6.0
 	gopkg.in/yaml.v3 v3.0.1
 )
 
@@ -41,7 +42,6 @@ require (
 	golang.org/x/crypto v0.0.0-20220622213112-05595931fe9d // indirect
 	golang.org/x/image v0.6.0 // indirect
 	golang.org/x/net v0.8.0 // indirect
-	golang.org/x/oauth2 v0.6.0 // indirect
 	golang.org/x/sync v0.1.0 // indirect
 	golang.org/x/sys v0.6.0 // indirect
 	golang.org/x/text v0.8.0 // indirect
