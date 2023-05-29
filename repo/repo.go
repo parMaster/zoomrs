@@ -196,7 +196,8 @@ func (r *Repository) DownloadJob(ctx context.Context) {
 
 		// download the record
 		if queued != nil {
-			log.Printf("[INFO] Downloading %s record %s meetingId %s", queued.Type, queued.Id, queued.MeetingId)
+			log.Printf("[DEBUG] ↓ %d MB | %s record %s meetingId %s", queued.FileSize/1024/1024, queued.Type, queued.Id, queued.MeetingId)
+			log.Printf("[INFO] ↓ %d MB | %s", queued.FileSize/1024/1024, queued.Id)
 			downErr := r.DownloadRecord(queued)
 			if downErr != nil {
 				log.Printf("[ERROR] download returned error: %s - %v", queued.Id, downErr)
