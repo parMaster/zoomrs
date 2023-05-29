@@ -162,7 +162,7 @@ func (r *Repository) SyncMeetings(meetings *[]model.Meeting) error {
 		}
 	}
 
-	log.Printf("[DEBUG] Saved %d new meetings. Skipped: %d (already saved) %d (too short), %d (empty)", saved, skipExists, skipDuration, skipEmpty)
+	log.Printf("[INFO] Saved %d new meetings. Skipped: %d (already saved) %d (too short), %d (empty)", saved, skipExists, skipDuration, skipEmpty)
 	return nil
 }
 
