@@ -29,7 +29,18 @@ func (s *Server) router() http.Handler {
 	// Private routes
 	m := s.authService.Middleware()
 	router.With(m.Auth).Get("/listMeetings", s.listMeetingsHandler)
-	router.With(m.Auth).Get("/loadMeetings", s.loadMeetingsHandler)
+
+	router.With(m.Trace).Get("/", func(rw http.ResponseWriter, r *http.Request) {
+		// Check if user logged in
+		userInfo, err := token.GetUserInfo(r)
+		log.Printf("[DEBUG] userInfo: %+v", userInfo)
+		log.Printf("[DEBUG] err: %+v", err)
+		if err != nil || userInfo.Attributes["email"] == "" {
+			http.Redirect(rw, r, "/login", http.StatusFound)
+			return
+		}
+		s.responseWithFile("web/index.html", rw)
+	})
 
 	// Public routes
 	router.Get("/status", s.statusHandler)
@@ -51,18 +62,6 @@ func (s *Server) router() http.Handler {
 	router.Get("/favicon.ico", func(rw http.ResponseWriter, r *http.Request) {
 		rw.Header().Set("Content-Type", "image/x-icon")
 		s.responseWithFile("web/favicon.ico", rw)
-	})
-
-	router.With(m.Trace).Get("/", func(rw http.ResponseWriter, r *http.Request) {
-		// Check if user logged in
-		userInfo, err := token.GetUserInfo(r)
-		log.Printf("[DEBUG] userInfo: %+v", userInfo)
-		log.Printf("[DEBUG] err: %+v", err)
-		if err != nil || userInfo.Attributes["email"] == "" {
-			http.Redirect(rw, r, "/login", http.StatusFound)
-			return
-		}
-		s.responseWithFile("web/index.html", rw)
 	})
 
 	fs := http.FileServer(http.Dir(s.cfg.Storage.Repository))
@@ -107,6 +106,9 @@ func (s *Server) statusHandler(rw http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) listMeetingsHandler(rw http.ResponseWriter, r *http.Request) {
+	userInfo, err := token.GetUserInfo(r)
+	log.Printf("[INFO] /listMeetings: %s (%s)", userInfo.Email, r.Header.Get("X-Real-Ip"))
+
 	rw.Header().Set("Content-Type", "application/json")
 	rw.Header().Set("Access-Control-Allow-Origin", "*")
 	m, err := s.store.ListMeetings()
@@ -135,7 +137,7 @@ func (s *Server) watchMeetingHandler(rw http.ResponseWriter, r *http.Request) {
 	// uuid is get parameter
 	accessKey := chi.URLParam(r, "accessKey")
 	uuid := r.URL.Query().Get("uuid")
-	log.Printf("[DEBUG] /watchMeeting/%s?uuid=%s", accessKey, uuid)
+	log.Printf("[INFO] /watchMeeting/%s?uuid=%s (%s)", accessKey, uuid, r.Header.Get("X-Real-Ip"))
 
 	if accessKey == "" || uuid == "" {
 		rw.WriteHeader(http.StatusBadRequest)
@@ -173,26 +175,14 @@ func (s *Server) watchMeetingHandler(rw http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	log.Printf("[INFO] /watchMeeting granted")
+
 	resp := map[string]interface{}{
 		"meeting": meeting,
 		"records": records,
 	}
-
 	rw.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(rw).Encode(resp)
-}
-
-func (s *Server) loadMeetingsHandler(rw http.ResponseWriter, r *http.Request) {
-	rw.Header().Set("Content-Type", "application/json")
-	rw.Header().Set("Access-Control-Allow-Origin", "*")
-
-	meetings, err := s.client.GetMeetings()
-	if err != nil {
-		log.Printf("[ERROR] failed to get meetings, %v", err)
-		rw.WriteHeader(http.StatusInternalServerError)
-		return
-	}
-	json.NewEncoder(rw).Encode(meetings)
 }
 
 func filesOnly(next http.Handler) http.Handler {
@@ -201,6 +191,7 @@ func filesOnly(next http.Handler) http.Handler {
 			http.NotFound(w, r)
 			return
 		}
+		log.Printf("[INFO] %s (%s)", r.URL.Path, r.Header.Get("X-Real-Ip"))
 		next.ServeHTTP(w, r)
 	})
 }

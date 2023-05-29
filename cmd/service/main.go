@@ -130,7 +130,6 @@ func main() {
 	}
 	if conf.Server.Dbg {
 		logOpts = append(logOpts, lgr.Debug)
-		logOpts = append(logOpts, lgr.StackTraceOnError)
 	}
 	lgr.SetupStdLogger(logOpts...)
 
