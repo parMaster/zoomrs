@@ -18,7 +18,7 @@ import (
 
 type Client interface {
 	Authorize() error
-	GetMeetings() ([]model.Meeting, error)
+	GetMeetings(daysAgo int) ([]model.Meeting, error)
 	GetToken() (*client.AccessToken, error)
 	DeleteMeetingRecordings(meetingId string, delete bool) error
 }
@@ -59,7 +59,7 @@ func NewRepository(store storage.Storer, client Client, cfg config.Parameters) *
 func (r *Repository) SyncJob(ctx context.Context) {
 	ticker := time.NewTicker(60 * time.Minute)
 	for {
-		meetings, err := r.client.GetMeetings()
+		meetings, err := r.client.GetMeetings(1)
 		if err != nil {
 			log.Printf("[ERROR] failed to get meetings, %v", err)
 			continue

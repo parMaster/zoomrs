@@ -90,7 +90,7 @@ func (z *ZoomClient) GetToken() (*AccessToken, error) {
 	return z.token, nil
 }
 
-func (z *ZoomClient) GetMeetings() ([]model.Meeting, error) {
+func (z *ZoomClient) GetMeetings(daysAgo int) ([]model.Meeting, error) {
 	_, err := z.GetToken()
 	if err != nil {
 		return nil, errors.Join(fmt.Errorf("unable to get token"), err)
@@ -98,8 +98,8 @@ func (z *ZoomClient) GetMeetings() ([]model.Meeting, error) {
 
 	params := url.Values{}
 	params.Add(`page_size`, "300")
-	params.Add(`from`, time.Now().AddDate(0, 0, -1).Format("2006-01-02"))
-	params.Add(`to`, time.Now().AddDate(0, 0, -1).Format("2006-01-02"))
+	params.Add(`from`, time.Now().AddDate(0, 0, -1*daysAgo).Format("2006-01-02"))
+	params.Add(`to`, time.Now().AddDate(0, 0, -1*daysAgo).Format("2006-01-02"))
 	log.Printf("[DEBUG] initial params = %s", params.Encode())
 	req, err := http.NewRequest(http.MethodGet, "https://api.zoom.us/v2/users/me/recordings?"+params.Encode(), nil)
 	if err != nil {

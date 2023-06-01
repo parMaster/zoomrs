@@ -23,7 +23,7 @@ func Test_ZoomClient(t *testing.T) {
 	err = c.Authorize()
 	assert.NoError(t, err)
 
-	meetings, err := c.GetMeetings()
+	meetings, err := c.GetMeetings(1)
 	assert.NoError(t, err)
 	assert.NotNil(t, meetings)
 
