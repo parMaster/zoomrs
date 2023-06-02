@@ -330,14 +330,20 @@ func (r *Repository) CleanupJob(ctx context.Context, daysAgo int) {
 		if loaded {
 			var deleted int
 			for _, meeting := range meetings {
-				log.Printf("[DEBUG] Deleting meeting %s", meeting.UUID)
-				err := r.client.DeleteMeetingRecordings(meeting.UUID, r.cfg.Client.DeleteDownloaded)
-				if err != nil {
-					log.Printf("[ERROR] failed to delete meeting %s - %v", meeting.UUID, err)
-				} else {
-					deleted++
+				select {
+				case <-ctx.Done():
+					log.Printf("[DEBUG] Deleting canceled")
+					return
+				default:
+					log.Printf("[DEBUG] Deleting meeting %s", meeting.UUID)
+					err := r.client.DeleteMeetingRecordings(meeting.UUID, r.cfg.Client.DeleteDownloaded)
+					if err != nil {
+						log.Printf("[ERROR] failed to delete meeting %s - %v", meeting.UUID, err)
+					} else {
+						deleted++
+					}
+					time.Sleep(1 * time.Second) // avoid rate limit
 				}
-				time.Sleep(1 * time.Second) // avoid rate limit
 			}
 			log.Printf("[INFO] Deleted %d out of %d meetings", deleted, len(meetings))
 		} else {
