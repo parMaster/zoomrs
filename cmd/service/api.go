@@ -43,7 +43,10 @@ func (s *Server) router() http.Handler {
 		s.responseWithFile("web/index.html", rw)
 	})
 
-	router.With(m.Auth).Get("/stats", s.statsHandler)
+	router.With(m.Auth).Route("/stats", func(r chi.Router) {
+		r.Get("/{divider}", s.statsHandler)
+		r.Get("/", s.statsHandler)
+	})
 
 	router.Post("/meetingsLoaded/{accessKey}", s.meetingsLoadedHandler)
 
@@ -196,8 +199,9 @@ func (s *Server) watchMeetingHandler(rw http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) statsHandler(rw http.ResponseWriter, r *http.Request) {
-	stats, _ := s.store.GetRecordsByStatus(model.Downloaded)
+	div := chi.URLParam(r, "divider")
 
+	stats, _ := s.store.GetRecordsByStatus(model.Downloaded)
 	if stats == nil {
 		rw.WriteHeader(http.StatusInternalServerError)
 		return
@@ -212,6 +216,19 @@ func (s *Server) statsHandler(rw http.ResponseWriter, r *http.Request) {
 			resp[day] = 0
 		}
 		resp[day] += r.FileSize
+	}
+
+	dividers := map[string]int64{
+		"K": 1024,
+		"M": 1024 * 1024,
+		"G": 1024 * 1024 * 1024,
+	}
+	divider, ok := dividers[div]
+	if !ok {
+		divider = 1
+	}
+	for k, v := range resp {
+		resp[k] = v / divider
 	}
 
 	rw.Header().Set("Content-Type", "application/json")
