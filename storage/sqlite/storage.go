@@ -268,6 +268,38 @@ func (s *SQLiteStorage) GetQueuedRecord() (*model.Record, error) {
 	return &record, nil
 }
 
+// GetRecords returns records from the database
+func (s *SQLiteStorage) GetRecordsByStatus(status model.RecordStatus) ([]model.Record, error) {
+	q := "SELECT * FROM `records` WHERE status = $1"
+	rows, err := s.DB.QueryContext(s.ctx, q, status)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var records []model.Record
+
+	for rows.Next() {
+		record := model.Record{}
+		err := rows.Scan(
+			&record.Id,
+			&record.MeetingId,
+			&record.Type,
+			&record.DateTime,
+			&record.FileExtension,
+			&record.FileSize,
+			&record.DownloadURL,
+			&record.PlayURL,
+			&record.Status,
+			&record.FilePath)
+		if err != nil {
+			return nil, err
+		}
+		records = append(records, record)
+	}
+	return records, nil
+}
+
 // Stats returns the number of records in each status
 func (s *SQLiteStorage) Stats() (map[model.RecordStatus]interface{}, error) {
 	q := "select sum(fileSize)/1048576 as size_mb, sum(fileSize)/1073741824 as size_gb, count(id) as count, status FROM records group by status;"

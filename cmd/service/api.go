@@ -43,6 +43,8 @@ func (s *Server) router() http.Handler {
 		s.responseWithFile("web/index.html", rw)
 	})
 
+	router.With(m.Auth).Get("/stats", s.statsHandler)
+
 	router.Post("/meetingsLoaded/{accessKey}", s.meetingsLoadedHandler)
 
 	// Public routes
@@ -189,6 +191,29 @@ func (s *Server) watchMeetingHandler(rw http.ResponseWriter, r *http.Request) {
 		"meeting": meeting,
 		"records": records,
 	}
+	rw.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(rw).Encode(resp)
+}
+
+func (s *Server) statsHandler(rw http.ResponseWriter, r *http.Request) {
+	stats, _ := s.store.GetRecordsByStatus(model.Downloaded)
+
+	if stats == nil {
+		rw.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	// group stats by day, calculate sum of the file size
+	resp := map[string]int64{}
+
+	for _, r := range stats {
+		day := r.DateTime[:10]
+		if _, ok := resp[day]; !ok {
+			resp[day] = 0
+		}
+		resp[day] += r.FileSize
+	}
+
 	rw.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(rw).Encode(resp)
 }
