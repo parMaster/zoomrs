@@ -340,6 +340,8 @@ func (r *Repository) CleanupJob(ctx context.Context, daysAgo int) {
 				time.Sleep(1 * time.Second) // avoid rate limit
 			}
 			log.Printf("[INFO] Deleted %d out of %d meetings", deleted, len(meetings))
+		} else {
+			log.Printf("[INFO] Deleting skipped - not all meetings are loaded")
 		}
 		return
 	}
@@ -379,7 +381,7 @@ func (r *Repository) requestMeetingsLoaded(meetings []string) (loaded bool, err 
 			return false, fmt.Errorf("failed to decode response body, %v", err)
 		}
 		if result.Result != "ok" {
-			return false, fmt.Errorf("meetingsLoaded result is %s", result.Result)
+			return false, nil
 		}
 	}
 	// all instances returned "ok"

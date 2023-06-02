@@ -262,11 +262,21 @@ func (s *Server) meetingsLoadedHandler(rw http.ResponseWriter, r *http.Request) 
 			return
 		}
 		for _, rec := range recs {
+
 			if rec.Status != model.Downloaded {
 				resp["result"] = "pending"
-				log.Printf("[DEBUG] Pending caused by %s - %s ", rec.Id, rec.Status)
+				log.Printf("[DEBUG] Pending caused by status %s - %s", rec.Id, rec.Status)
 				json.NewEncoder(rw).Encode(resp)
 				return
+			}
+
+			if info, err := os.Stat(rec.FilePath); err == nil {
+				if info.Size() != rec.FileSize {
+					resp["result"] = "pending"
+					log.Printf("[DEBUG] Pending caused by filesize %s - %d", rec.Id, rec.FileSize)
+					json.NewEncoder(rw).Encode(resp)
+					return
+				}
 			}
 		}
 	}
