@@ -14,6 +14,7 @@ import (
 	"github.com/go-pkgz/auth/token"
 	"github.com/go-pkgz/rest"
 	"github.com/parMaster/zoomrs/storage"
+	"github.com/parMaster/zoomrs/storage/model"
 	"github.com/parMaster/zoomrs/web"
 )
 
@@ -41,6 +42,8 @@ func (s *Server) router() http.Handler {
 		}
 		s.responseWithFile("web/index.html", rw)
 	})
+
+	router.Post("/meetingsLoaded/{accessKey}", s.meetingsLoadedHandler)
 
 	// Public routes
 	router.Get("/status", s.statusHandler)
@@ -194,4 +197,51 @@ func filesOnly(next http.Handler) http.Handler {
 		log.Printf("[INFO] %s (%s)", r.URL.Path, r.Header.Get("X-Real-Ip"))
 		next.ServeHTTP(w, r)
 	})
+}
+
+// meetingsLoadedHandler is called to ask if every meeting from the list is loaded
+// list is passed as a JSON array of UUIDs in the request body
+// response is result:ok or result:pending
+func (s *Server) meetingsLoadedHandler(rw http.ResponseWriter, r *http.Request) {
+	accessKey := chi.URLParam(r, "accessKey")
+	log.Printf("[INFO] /meetingsLoaded/%s (%s)", accessKey, r.Header.Get("X-Real-Ip"))
+	if accessKey == "" || accessKey != s.cfg.Server.AccessKeySalt {
+		rw.WriteHeader(http.StatusForbidden)
+		return
+	}
+
+	type req struct {
+		Meetings []string `json:"meetings"`
+	}
+	var uuids req
+	err := json.NewDecoder(r.Body).Decode(&uuids)
+	if err != nil {
+		log.Printf("[ERROR] failed to decode request body, %v", err)
+		rw.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	log.Printf("[DEBUG] Checking if uuids loaded: \r\n %+v", uuids.Meetings)
+	resp := map[string]interface{}{}
+
+	for _, uuid := range uuids.Meetings {
+		recs, err := s.store.GetRecords(uuid)
+		if err != nil {
+			log.Printf("[ERROR] failed to get records, %v", err)
+			rw.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		for _, rec := range recs {
+			if rec.Status != model.Downloaded {
+				resp["result"] = "pending"
+				log.Printf("[DEBUG] Pending caused by %s - %s ", rec.Id, rec.Status)
+				json.NewEncoder(rw).Encode(resp)
+				return
+			}
+		}
+	}
+
+	log.Printf("[DEBUG] All records are downloaded, returning ok")
+	resp["result"] = "ok"
+	json.NewEncoder(rw).Encode(resp)
 }

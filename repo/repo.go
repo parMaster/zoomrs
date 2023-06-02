@@ -1,9 +1,12 @@
 package repo
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
+	"net/http"
 	"os"
 	"strings"
 	"time"
@@ -61,14 +64,16 @@ func (r *Repository) SyncJob(ctx context.Context) {
 	for {
 		meetings, err := r.client.GetMeetings(1)
 		if err != nil {
-			log.Printf("[ERROR] failed to get meetings, %v", err)
+			log.Printf("[ERROR] failed to get meetings, %v, retrying in 30 sec", err)
+			time.Sleep(30 * time.Second)
 			continue
 		}
 		log.Printf("[DEBUG] Syncing meetings - %d in feed", len(meetings))
 
 		err = r.SyncMeetings(&meetings)
 		if err != nil {
-			log.Printf("[ERROR] failed to sync meetings, %v", err)
+			log.Printf("[ERROR] failed to sync meetings, %v, retrying in 30 sec", err)
+			time.Sleep(30 * time.Second)
 			continue
 		}
 
@@ -282,4 +287,99 @@ func (r *Repository) meetingRecordsLoaded(meetingId string) bool {
 		}
 	}
 	return true
+}
+
+func (r *Repository) CleanupJob(ctx context.Context, daysAgo int) {
+	var retry int
+	for {
+		meetings, err := r.client.GetMeetings(daysAgo)
+		if err != nil {
+			log.Printf("[ERROR] failed to get meetings, %v", err)
+			time.Sleep(1 * time.Minute)
+			continue
+		}
+		log.Printf("[INFO] Cleaning up meetings - %d in feed", len(meetings))
+		if len(meetings) == 0 {
+			log.Printf("[INFO] No meetings to cleanup %d days ago", daysAgo)
+			return
+		}
+
+		uuids := []string{}
+		for _, meeting := range meetings {
+			uuids = append(uuids, meeting.UUID)
+		}
+
+		loaded, err := r.requestMeetingsLoaded(uuids)
+		if err != nil {
+			log.Printf("[ERROR] meetingsLoaded returned error: %v", err)
+			select {
+			case <-ctx.Done():
+				return
+			default:
+				retry++
+				if retry > 10 {
+					log.Printf("[ERROR] retry limit reached (10)")
+					return
+				}
+				log.Printf("[INFO] (%d) retrying after 1 minute", retry)
+				time.Sleep(time.Second)
+			}
+			continue
+		}
+
+		if loaded {
+			var deleted int
+			for _, meeting := range meetings {
+				log.Printf("[DEBUG] Deleting meeting %s", meeting.UUID)
+				err := r.client.DeleteMeetingRecordings(meeting.UUID, r.cfg.Client.DeleteDownloaded)
+				if err != nil {
+					log.Printf("[ERROR] failed to delete meeting %s - %v", meeting.UUID, err)
+				} else {
+					deleted++
+				}
+			}
+			log.Printf("[INFO] Deleted %d out of %d meetings", deleted, len(meetings))
+		}
+	}
+}
+
+// requestMeetingsLoaded calls /meetingsLoaded POST API of each instance listed in cfg.Commander.Instances
+// to ask if the list of meetings (uuids) recordings are downloaded
+func (r *Repository) requestMeetingsLoaded(meetings []string) (loaded bool, err error) {
+
+	if r.cfg.Commander.Instances == nil || len(r.cfg.Commander.Instances) == 0 {
+		return false, fmt.Errorf("no instances configured")
+	}
+
+	req := struct {
+		Meetings []string `json:"meetings"`
+	}{Meetings: meetings}
+
+	body, err := json.Marshal(req)
+	if err != nil {
+		return false, fmt.Errorf("failed to marshal meetings, %v", err)
+	}
+
+	for _, instance := range r.cfg.Commander.Instances {
+		resp, err := http.Post(instance+"/meetingsLoaded/"+r.cfg.Server.AccessKeySalt, "application/json", bytes.NewBuffer(body))
+		if err != nil {
+			return false, fmt.Errorf("failed to post meetingsLoaded to %s, %v", instance, err)
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			return false, fmt.Errorf("failed to post meetingsLoaded to %s, status %d", instance, resp.StatusCode)
+		}
+		var result struct {
+			Result string `json:"result"`
+		}
+		err = json.NewDecoder(resp.Body).Decode(&result)
+		if err != nil {
+			return false, fmt.Errorf("failed to decode response body, %v", err)
+		}
+		if result.Result != "ok" {
+			return false, fmt.Errorf("meetingsLoaded result is %s", result.Result)
+		}
+	}
+	// all instances returned "ok"
+	return true, nil
 }

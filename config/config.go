@@ -10,10 +10,11 @@ import (
 
 // Parameters is the main configuration struct
 type Parameters struct {
-	Server   Server   `yaml:"server"`
-	Client   Client   `yaml:"client"`
-	Storage  Storage  `yaml:"storage"`
-	Syncable Syncable `yaml:"syncable"`
+	Server    Server    `yaml:"server"`
+	Client    Client    `yaml:"client"`
+	Storage   Storage   `yaml:"storage"`
+	Syncable  Syncable  `yaml:"syncable"`
+	Commander Commander `yaml:"commander"`
 }
 
 // Client is the Zoom client configuration
@@ -55,6 +56,10 @@ type Syncable struct {
 	Optional []string `yaml:"optional"`
 	// Minutes - Minimal duration meeting. Meetings shorter than this value will not be synced
 	MinDuration int `yaml:"min_duration"`
+}
+
+type Commander struct {
+	Instances []string `yaml:"instances"`
 }
 
 // New creates a new Parameters from the given file

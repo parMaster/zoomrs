@@ -37,5 +37,8 @@ func Test_LoadConfig(t *testing.T) {
 	assert.NotEmpty(t, conf.Syncable.Optional)
 	assert.NotEmpty(t, conf.Syncable.MinDuration)
 
+	assert.NotEmpty(t, conf.Commander)
+	assert.NotEmpty(t, conf.Commander.Instances)
+
 	t.Logf("%v+", conf.Storage)
 }
