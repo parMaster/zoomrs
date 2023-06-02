@@ -110,6 +110,11 @@ func (s *Server) statusHandler(rw http.ResponseWriter, r *http.Request) {
 
 func (s *Server) listMeetingsHandler(rw http.ResponseWriter, r *http.Request) {
 	userInfo, err := token.GetUserInfo(r)
+	if err != nil {
+		log.Printf("[ERROR] failed to get user info, %v", err)
+		rw.WriteHeader(http.StatusInternalServerError)
+		return
+	}
 	log.Printf("[INFO] /listMeetings: %s (%s)", userInfo.Email, r.Header.Get("X-Real-Ip"))
 
 	rw.Header().Set("Content-Type", "application/json")
