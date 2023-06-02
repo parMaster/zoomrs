@@ -322,7 +322,7 @@ func (r *Repository) CleanupJob(ctx context.Context, daysAgo int) {
 					return
 				}
 				log.Printf("[INFO] (%d) retrying after 1 minute", retry)
-				time.Sleep(time.Second)
+				time.Sleep(time.Minute)
 			}
 			continue
 		}
@@ -337,9 +337,11 @@ func (r *Repository) CleanupJob(ctx context.Context, daysAgo int) {
 				} else {
 					deleted++
 				}
+				time.Sleep(1 * time.Second) // avoid rate limit
 			}
 			log.Printf("[INFO] Deleted %d out of %d meetings", deleted, len(meetings))
 		}
+		return
 	}
 }
 
