@@ -215,7 +215,7 @@ func (s *Server) statsHandler(rw http.ResponseWriter, r *http.Request) {
 		if _, ok := resp[day]; !ok {
 			resp[day] = 0
 		}
-		resp[day] += r.FileSize
+		resp[day] += int64(r.FileSize)
 	}
 
 	dividers := map[string]int64{
@@ -288,7 +288,7 @@ func (s *Server) meetingsLoadedHandler(rw http.ResponseWriter, r *http.Request) 
 			}
 
 			if info, err := os.Stat(rec.FilePath); err == nil {
-				if info.Size() != rec.FileSize {
+				if info.Size() != int64(rec.FileSize) {
 					resp["result"] = "pending"
 					log.Printf("[DEBUG] Pending caused by filesize %s - %d", rec.Id, rec.FileSize)
 					json.NewEncoder(rw).Encode(resp)

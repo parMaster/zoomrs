@@ -248,7 +248,7 @@ func (r *Repository) DownloadRecord(record *model.Record) error {
 		return fmt.Errorf("failed to download %s, status %d", url, resp.HTTPResponse.StatusCode)
 	}
 	// check if the file is not empty
-	if resp.Size() == 0 || resp.Size() != record.FileSize {
+	if resp.Size() == 0 || resp.Size() != int64(record.FileSize) {
 		r.store.UpdateRecord(record.Id, model.Failed, "")
 		return fmt.Errorf("failed to download %s, size %d", url, resp.Size())
 	}

@@ -1,6 +1,7 @@
 package model
 
 import (
+	"fmt"
 	"time"
 )
 
@@ -59,7 +60,7 @@ type Record struct {
 	StartTime     time.Time    `json:"recording_start"` // DateTime in RFC3339
 	DateTime      string       `json:"date_time"`
 	FileExtension string       `json:"file_extension"` // M4A, MP4
-	FileSize      int64        `json:"file_size"`      // bytes
+	FileSize      FileSize     `json:"file_size"`      // bytes
 	DownloadURL   string       `json:"download_url"`
 	PlayURL       string       `json:"play_url"`
 	Status        RecordStatus `json:"-"`
@@ -72,7 +73,30 @@ type RecordInfo struct {
 	MeetingId string       `json:"meeting_id"` // foreign key to Meeting.UUID
 	Type      RecordType   `json:"recording_type"`
 	DateTime  string       `json:"date_time"`
-	FileSize  int64        `json:"file_size"` // bytes
+	FileSize  FileSize     `json:"file_size"` // bytes
 	Status    RecordStatus `json:"status"`
 	FilePath  string       `json:"file_path"` // local file path
+}
+
+// FileSize describes the file size
+type FileSize int64
+
+// String returns the string representation of the file size
+// in human readable format
+func (f FileSize) String() string {
+	const unit = 1024
+	if f < unit {
+		return fmt.Sprintf("%dB", f)
+	}
+	div, exp := int64(unit), 0
+	for n := f / unit; n >= unit; n /= unit {
+		div *= unit
+		exp++
+	}
+	return fmt.Sprintf("%.1f%cB",
+		float64(f)/float64(div), "kMGTPE"[exp])
+}
+
+func (f FileSize) MarshalJSON() ([]byte, error) {
+	return []byte(fmt.Sprintf(`"%s"`, f.String())), nil
 }
