@@ -1,7 +1,7 @@
 package main
 
 import (
-	"database/sql"
+	"context"
 	"fmt"
 	"log"
 	"os"
@@ -9,22 +9,22 @@ import (
 	"testing"
 
 	"github.com/parMaster/zoomrs/config"
+	"github.com/parMaster/zoomrs/storage"
+	"github.com/parMaster/zoomrs/storage/model"
 	"github.com/stretchr/testify/assert"
 )
 
-// go test -v ./cmd/service -run ^Test_CheckConsistency$
-// check if all records have corresponding files
-func Test_CheckConsistency(t *testing.T) {
-
+func setup() (*config.Parameters, error) {
 	cfgPath := "../../config/config.yml"
 	// check if config file exists
 	if _, err := os.Stat(cfgPath); os.IsNotExist(err) {
-		fmt.Println("Config file does not exist: ", cfgPath)
-		return
+		return nil, fmt.Errorf("Config file does not exist: %s", cfgPath)
 	}
-
 	cfg, err := config.NewConfig(cfgPath)
-	assert.NoError(t, err)
+
+	if err != nil {
+		return nil, fmt.Errorf("[ERROR] failed to load config: %e", err)
+	}
 
 	dbPath := cfg.Storage.Path
 	// cut off "file:" prefix
@@ -36,46 +36,47 @@ func Test_CheckConsistency(t *testing.T) {
 
 	// check if db file exists
 	if _, err := os.Stat(dbPath); os.IsNotExist(err) {
-		fmt.Println("Database file does not exist: ", dbPath)
-		return
+		return nil, fmt.Errorf("Database file does not exist: %s", dbPath)
 	}
 
 	log.Println("Database file: ", dbPath)
+	return cfg, nil
+}
 
-	// return // skip this test
-	sqliteDatabase, err := sql.Open("sqlite3", cfg.Storage.Path)
+// go test -v ./cmd/service -run ^Test_CheckConsistency$
+// check if all records have corresponding files
+func Test_CheckConsistency(t *testing.T) {
+
+	cfg, err := setup()
+	if err != nil {
+		t.Skip(err.Error())
+	}
+
+	var s storage.Storer
+	ctx := context.Background()
+	err = LoadStorage(ctx, cfg.Storage, &s)
+	if err != nil {
+		t.Skip(err.Error())
+	}
+
+	recs, err := s.GetRecordsByStatus(model.Downloaded)
 	assert.NoError(t, err)
-	defer sqliteDatabase.Close()
-
-	q := "select id, meetingId, startTime, path, fileSize from records WHERE status = 'downloaded' ORDER BY startTime;"
-	rows, err := sqliteDatabase.Query(q)
-	assert.NoError(t, err)
-	defer rows.Close()
-
 	var checked int
-	for rows.Next() {
-		var id string
-		var meetingId string
-		var startTime string
-		var path string
-		var fileSize int64
-		rows.Scan(&id, &meetingId, &startTime, &path, &fileSize)
-		// fmt.Println(id, startTime, path)
-
+	for _, rec := range recs {
 		// check if file with path exists
-		if _, err := os.Stat(path); os.IsNotExist(err) {
-			fmt.Println("File does not exist: ", path)
+		if _, err := os.Stat(rec.FilePath); os.IsNotExist(err) {
+			fmt.Println("File does not exist: ", rec.FilePath)
 		}
 		// check if file is not empty
-		if info, err := os.Stat(path); err == nil {
+		if info, err := os.Stat(rec.FilePath); err == nil {
 			if info.Size() == 0 {
-				fmt.Println("File is empty: ", path)
+				fmt.Println("File is empty: ", rec.FilePath)
 			}
 		}
 		// check if file size matches record.FileSize
-		if info, err := os.Stat(path); err == nil {
-			if info.Size() != fileSize {
-				fmt.Println("File size does not match: ", path)
+		if info, err := os.Stat(rec.FilePath); err == nil {
+			if info.Size() != int64(rec.FileSize) {
+				fmt.Println("File size does not match: ", rec.FilePath)
 			}
 		}
 		checked++
