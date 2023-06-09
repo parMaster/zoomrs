@@ -48,6 +48,17 @@ func (s *Commander) Run(opts Options) {
 		repo.CleanupJob(s.ctx, opts.Trash)
 	}
 
+	switch opts.Cmd {
+	case "check":
+		log.Printf("[INFO] starting CheckConsistency")
+		checked, err := repo.CheckConsistency()
+		if err != nil {
+			log.Printf("[ERROR] CheckConsistency: %d, %e", checked, err)
+		} else {
+			log.Printf("[INFO] CheckConsistency: OK, %d", checked)
+		}
+	}
+
 	log.Printf("[INFO] cli job done\n*********************************")
 	s.cancel()
 	<-s.ctx.Done()
@@ -73,6 +84,7 @@ type Options struct {
 	Config string `long:"config" env:"CONFIG" default:"config.yml" description:"yaml config file name"`
 	Dbg    bool   `long:"dbg" env:"DEBUG" description:"show debug info"`
 	Trash  int    `long:"trash" description:"trash old meetings after N days"`
+	Cmd    string `long:"cmd" description:"run command"`
 }
 
 func main() {

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -392,4 +393,37 @@ func (r *Repository) requestMeetingsLoaded(meetings []string) (loaded bool, err 
 	}
 	// all instances returned "ok"
 	return true, nil
+}
+
+// CheckConsistency checks if all downloaded files exist and have correct size
+func (r *Repository) CheckConsistency() (checked int, result error) {
+	recs, err := r.store.GetRecordsByStatus(model.Downloaded)
+	if err != nil {
+		return 0, err
+	}
+
+	for _, rec := range recs {
+		// check if file with path exists
+		if _, err := os.Stat(rec.FilePath); os.IsNotExist(err) {
+			log.Printf("File does not exist: %s", rec.FilePath)
+			errors.Join(result, fmt.Errorf("File does not exist: %s\r\n", rec.FilePath))
+		}
+		// check if file is not empty
+		if info, err := os.Stat(rec.FilePath); err == nil {
+			if info.Size() == 0 {
+				log.Printf("File is empty: %s", rec.FilePath)
+				errors.Join(result, fmt.Errorf("File is empty: %s\r\n", rec.FilePath))
+			}
+		}
+		// check if file size matches record.FileSize
+		if info, err := os.Stat(rec.FilePath); err == nil {
+			if info.Size() != int64(rec.FileSize) {
+				log.Printf("File size does not match: %s", rec.FilePath)
+				errors.Join(result, fmt.Errorf("File size does not match: %s\r\n", rec.FilePath))
+			}
+		}
+		checked++
+	}
+	log.Printf("Checked files: %d", checked)
+	return
 }
