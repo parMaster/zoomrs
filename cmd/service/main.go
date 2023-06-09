@@ -30,6 +30,7 @@ type Server struct {
 	store       storage.Storer
 	ctx         context.Context
 	authService *auth.Service
+	repo        *repo.Repository
 }
 
 func NewServer(conf *config.Parameters, ctx context.Context) *Server {
@@ -65,11 +66,11 @@ func (s *Server) Run() {
 		log.Fatalf("[ERROR] failed to init storage: %e", err)
 	}
 
-	repo := repo.NewRepository(s.store, s.client, *s.cfg)
+	s.repo = repo.NewRepository(s.store, s.client, *s.cfg)
 
 	go s.startServer(s.ctx)
-	go repo.SyncJob(s.ctx)
-	go repo.DownloadJob(s.ctx)
+	go s.repo.SyncJob(s.ctx)
+	go s.repo.DownloadJob(s.ctx)
 
 	<-s.ctx.Done()
 }

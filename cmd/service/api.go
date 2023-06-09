@@ -50,6 +50,8 @@ func (s *Server) router() http.Handler {
 
 	router.Post("/meetingsLoaded/{accessKey}", s.meetingsLoadedHandler)
 
+	router.With(m.Auth).Get("/check", s.checkConsistencyHandler)
+
 	// Public routes
 	router.Get("/status", s.statusHandler)
 	router.Get("/watchMeeting/{accessKey}", s.watchMeetingHandler)
@@ -301,4 +303,12 @@ func (s *Server) meetingsLoadedHandler(rw http.ResponseWriter, r *http.Request) 
 	log.Printf("[DEBUG] All records are downloaded, returning ok")
 	resp["result"] = "ok"
 	json.NewEncoder(rw).Encode(resp)
+}
+
+// checkConsistencyHandler is called to check if every record has a corresponding file and file size is correct
+func (s *Server) checkConsistencyHandler(rw http.ResponseWriter, r *http.Request) {
+	checked, err := s.repo.CheckConsistency()
+	response := map[string]interface{}{"checked": checked, "error": err}
+	rw.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(rw).Encode(response)
 }
