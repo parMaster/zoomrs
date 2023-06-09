@@ -8,11 +8,17 @@ USER=$(shell whoami)
 # get current user group
 GROUP=$(shell id -gn)
 
-buildsvc:
-	go build -o dist/zoomrs -v ./cmd/service
+.DEFAULT_GOAL: build
 
 build:
 	make buildsvc
+	make buildcli
+
+buildsvc:
+	go build -o dist/zoomrs -v ./cmd/service
+
+buildcli:
+	go build -o dist/zoomrs-cli -v ./cmd/cli
 
 info:
 	- @echo "revision $(REV)"
@@ -43,5 +49,3 @@ deploy:
 	sudo systemctl start zoomrs.service
 
 .PHONY: build buildsvc dbg test run info status deploy
-
-.DEFAULT_GOAL : build

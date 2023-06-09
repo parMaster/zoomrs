@@ -42,6 +42,7 @@ func (s *Commander) Run(opts Options) {
 	repo := repo.NewRepository(s.store, s.client, *s.cfg)
 
 	// Run cleanup job
+	// crontab line example: "00 10 * * * cd $HOME/go/src/zoomrs/dist && ./zoomrs-cli --dbg --trash 2 --config ../config/config_cli.yml >> /var/log/cron.log 2>&1"
 	if opts.Trash > 0 {
 		log.Printf("[INFO] starting cleanup job")
 		repo.CleanupJob(s.ctx, opts.Trash)
