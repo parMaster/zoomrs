@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/cavaliergopher/grab/v3"
+	"github.com/shirou/gopsutil/v3/disk"
 
 	"github.com/parMaster/zoomrs/client"
 	"github.com/parMaster/zoomrs/config"
@@ -234,6 +235,17 @@ func (r *Repository) DownloadRecord(record *model.Record) error {
 	err = r.prepareDestination(path)
 	if err != nil {
 		return err
+	}
+
+	// check if there is enough space to download the file
+	usage, err := disk.Usage(r.cfg.Storage.Repository)
+	if err != nil {
+		r.store.UpdateRecord(record.Id, model.Failed, "")
+		return fmt.Errorf("failed to check free space, %v", err)
+	}
+	if usage.Free < uint64(record.FileSize) {
+		r.store.UpdateRecord(record.Id, model.Failed, "")
+		return fmt.Errorf("not enough space to download %s (%d free, %d requred)", record.Id, usage.Free, record.FileSize)
 	}
 
 	url := record.DownloadURL + "?access_token=" + token.AccessToken
