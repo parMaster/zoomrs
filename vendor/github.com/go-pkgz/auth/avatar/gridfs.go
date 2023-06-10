@@ -5,8 +5,10 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"time"
 
+	"github.com/pkg/errors"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
@@ -37,7 +39,7 @@ func (gf *GridFS) Put(userID string, reader io.Reader) (avatar string, err error
 
 	buf := &bytes.Buffer{}
 	if _, err = io.Copy(buf, reader); err != nil {
-		return "", fmt.Errorf("can't read avatar for %s: %w", userID, err)
+		return "", errors.Wrapf(err, "can't read avatar for %s", userID)
 	}
 
 	avaHash := hash(buf.Bytes(), id)
@@ -53,12 +55,10 @@ func (gf *GridFS) Get(avatar string) (reader io.ReadCloser, size int, err error)
 	}
 	buf := &bytes.Buffer{}
 	sz, e := bucket.DownloadToStreamByName(avatar, buf)
-	if e != nil {
-		return nil, 0, fmt.Errorf("can't read avatar %s: %w", avatar, e)
-	}
-	return io.NopCloser(buf), int(sz), nil
+	return ioutil.NopCloser(buf), int(sz), errors.Wrapf(e, "can't read avatar %s", avatar)
 }
 
+//
 // ID returns a fingerprint of the avatar content. Uses MD5 because gridfs provides it directly
 func (gf *GridFS) ID(avatar string) (id string) {
 
@@ -113,7 +113,7 @@ func (gf *GridFS) Remove(avatar string) error {
 		}
 		return bucket.Delete(r.ID)
 	}
-	return fmt.Errorf("avatar %s not found", avatar)
+	return errors.Errorf("avatar %s not found", avatar)
 }
 
 // List all avatars (ids) on gfs
@@ -142,7 +142,7 @@ func (gf *GridFS) List() (ids []string, err error) {
 	return ids, nil
 }
 
-// Close gridfs store
+// Close gridfs does nothing but satisfies interface
 func (gf *GridFS) Close() error {
 	ctx, cancel := context.WithTimeout(context.Background(), gf.timeout)
 	defer cancel()

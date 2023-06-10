@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/golang-jwt/jwt"
+	"github.com/pkg/errors"
 )
 
 // Service wraps jwt operations
@@ -114,21 +115,21 @@ func (j *Service) Token(claims Claims) (string, error) {
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 
 	if j.SecretReader == nil {
-		return "", fmt.Errorf("secret reader not defined")
+		return "", errors.New("secret reader not defined")
 	}
 
 	if err := j.checkAuds(&claims, j.AudienceReader); err != nil {
-		return "", fmt.Errorf("aud rejected: %w", err)
+		return "", errors.Wrap(err, "aud rejected")
 	}
 
 	secret, err := j.SecretReader.Get(claims.Audience) // get secret via consumer defined SecretReader
 	if err != nil {
-		return "", fmt.Errorf("can't get secret: %w", err)
+		return "", errors.Wrap(err, "can't get secret")
 	}
 
 	tokenString, err := token.SignedString([]byte(secret))
 	if err != nil {
-		return "", fmt.Errorf("can't sign token: %w", err)
+		return "", errors.Wrap(err, "can't sign token")
 	}
 	return tokenString, nil
 }
@@ -138,7 +139,7 @@ func (j *Service) Parse(tokenString string) (Claims, error) {
 	parser := jwt.Parser{SkipClaimsValidation: true} // allow parsing of expired tokens
 
 	if j.SecretReader == nil {
-		return Claims{}, fmt.Errorf("secret reader not defined")
+		return Claims{}, errors.New("secret reader not defined")
 	}
 
 	aud := "ignore"
@@ -146,32 +147,32 @@ func (j *Service) Parse(tokenString string) (Claims, error) {
 		var err error
 		aud, err = j.aud(tokenString)
 		if err != nil {
-			return Claims{}, fmt.Errorf("can't retrieve audience from the token")
+			return Claims{}, errors.New("can't retrieve audience from the token")
 		}
 	}
 
 	secret, err := j.SecretReader.Get(aud)
 	if err != nil {
-		return Claims{}, fmt.Errorf("can't get secret: %w", err)
+		return Claims{}, errors.Wrap(err, "can't get secret")
 	}
 
 	token, err := parser.ParseWithClaims(tokenString, &Claims{}, func(token *jwt.Token) (interface{}, error) {
 		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
-			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
+			return nil, errors.Errorf("unexpected signing method: %v", token.Header["alg"])
 		}
 		return []byte(secret), nil
 	})
 	if err != nil {
-		return Claims{}, fmt.Errorf("can't parse token: %w", err)
+		return Claims{}, errors.Wrap(err, "can't parse token")
 	}
 
 	claims, ok := token.Claims.(*Claims)
 	if !ok {
-		return Claims{}, fmt.Errorf("invalid token")
+		return Claims{}, errors.New("invalid token")
 	}
 
 	if err = j.checkAuds(claims, j.AudienceReader); err != nil {
-		return Claims{}, fmt.Errorf("aud rejected: %w", err)
+		return Claims{}, errors.Wrap(err, "aud rejected")
 	}
 	return *claims, j.validate(claims)
 }
@@ -182,14 +183,14 @@ func (j *Service) aud(tokenString string) (string, error) {
 	parser := jwt.Parser{}
 	token, _, err := parser.ParseUnverified(tokenString, &Claims{})
 	if err != nil {
-		return "", fmt.Errorf("can't pre-parse token: %w", err)
+		return "", errors.Wrap(err, "can't pre-parse token")
 	}
 	claims, ok := token.Claims.(*Claims)
 	if !ok {
-		return "", fmt.Errorf("invalid token")
+		return "", errors.New("invalid token")
 	}
 	if strings.TrimSpace(claims.Audience) == "" {
-		return "", fmt.Errorf("empty aud")
+		return "", errors.New("empty aud")
 	}
 	return claims.Audience, nil
 }
@@ -228,7 +229,7 @@ func (j *Service) Set(w http.ResponseWriter, claims Claims) (Claims, error) {
 
 	tokenString, err := j.Token(claims)
 	if err != nil {
-		return Claims{}, fmt.Errorf("failed to make token token: %w", err)
+		return Claims{}, errors.Wrap(err, "failed to make token token")
 	}
 
 	if j.SendJWTHeader {
@@ -274,14 +275,14 @@ func (j *Service) Get(r *http.Request) (Claims, string, error) {
 		fromCookie = true
 		jc, err := r.Cookie(j.JWTCookieName)
 		if err != nil {
-			return Claims{}, "", fmt.Errorf("token cookie was not presented: %w", err)
+			return Claims{}, "", errors.Wrap(err, "token cookie was not presented")
 		}
 		tokenString = jc.Value
 	}
 
 	claims, err := j.Parse(tokenString)
 	if err != nil {
-		return Claims{}, "", fmt.Errorf("failed to get token: %w", err)
+		return Claims{}, "", errors.Wrap(err, "failed to get token")
 	}
 
 	// promote claim's aud to User.Audience
@@ -290,7 +291,7 @@ func (j *Service) Get(r *http.Request) (Claims, string, error) {
 	}
 
 	if !fromCookie && j.IsExpired(claims) {
-		return Claims{}, "", fmt.Errorf("token expired")
+		return Claims{}, "", errors.New("token expired")
 	}
 
 	if j.DisableXSRF {
@@ -300,7 +301,7 @@ func (j *Service) Get(r *http.Request) (Claims, string, error) {
 	if fromCookie && claims.User != nil {
 		xsrf := r.Header.Get(j.XSRFHeaderKey)
 		if claims.Id != xsrf {
-			return Claims{}, "", fmt.Errorf("xsrf mismatch")
+			return Claims{}, "", errors.New("xsrf mismatch")
 		}
 	}
 
@@ -330,14 +331,14 @@ func (j *Service) checkAuds(claims *Claims, audReader Audience) error {
 	}
 	auds, err := audReader.Get()
 	if err != nil {
-		return fmt.Errorf("failed to get auds: %w", err)
+		return errors.Wrap(err, "failed to get auds")
 	}
 	for _, a := range auds {
 		if strings.EqualFold(a, claims.Audience) {
 			return nil
 		}
 	}
-	return fmt.Errorf("aud %q not allowed", claims.Audience)
+	return errors.Errorf("aud %q not allowed", claims.Audience)
 }
 
 func (c Claims) String() string {

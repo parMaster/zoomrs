@@ -7,6 +7,8 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/pkg/errors"
+
 	"github.com/go-pkgz/auth/token"
 )
 
@@ -74,7 +76,7 @@ func setAvatar(ava AvatarSaver, u token.User, client *http.Client) (token.User, 
 	if ava != nil {
 		avatarURL, e := ava.Put(u, client)
 		if e != nil {
-			return u, fmt.Errorf("failed to save avatar for: %w", e)
+			return u, errors.Wrap(e, "failed to save avatar for")
 		}
 		u.Picture = avatarURL
 		return u, nil
@@ -85,11 +87,11 @@ func setAvatar(ava AvatarSaver, u token.User, client *http.Client) (token.User, 
 func randToken() (string, error) {
 	b := make([]byte, 32)
 	if _, err := rand.Read(b); err != nil {
-		return "", fmt.Errorf("can't get random: %w", err)
+		return "", errors.Wrap(err, "can't get random")
 	}
 	s := sha1.New()
 	if _, err := s.Write(b); err != nil {
-		return "", fmt.Errorf("can't write randoms to sha1: %w", err)
+		return "", errors.Wrap(err, "can't write randoms to sha1")
 	}
 	return fmt.Sprintf("%x", s.Sum(nil)), nil
 }

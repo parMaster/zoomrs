@@ -1,5 +1,7 @@
 package avatar
 
+//go:generate sh -c "mockery -inpkg -name Store -print > /tmp/mock.tmp && mv /tmp/mock.tmp store_mock.go"
+
 import (
 	"context"
 	"crypto/sha1" //nolint gosec
@@ -15,6 +17,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/pkg/errors"
 	bolt "go.etcd.io/bbolt"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
@@ -46,28 +49,28 @@ func NewStore(uri string) (Store, error) {
 		return NewLocalFS(strings.TrimPrefix(uri, "file://")), nil
 	case !strings.Contains(uri, "://"):
 		return NewLocalFS(uri), nil
-	case strings.HasPrefix(uri, "mongodb://"), strings.HasPrefix(uri, "mongodb+srv://"):
+	case strings.HasPrefix(uri, "mongodb://"):
+
 		db, bucketName, u, err := parseExtMongoURI(uri)
 		if err != nil {
-			return nil, fmt.Errorf("can't parse mongo store uri %s: %w", uri, err)
+			return nil, errors.Wrapf(err, "can't parse mongo store uri %s", uri)
 		}
 
-		const timeout = time.Second * 30
-		ctx, cancel := context.WithTimeout(context.Background(), timeout)
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 		defer cancel()
 
-		client, err := mongo.Connect(ctx, options.Client().ApplyURI(u).SetConnectTimeout(timeout))
+		client, err := mongo.Connect(ctx, options.Client().ApplyURI(u))
 		if err != nil {
-			return nil, fmt.Errorf("failed to connect to mongo server: %w", err)
+			return nil, errors.Wrap(err, "failed to connect to mongo server")
 		}
 		if err = client.Ping(ctx, nil); err != nil {
-			return nil, fmt.Errorf("failed to connect to mongo server: %w", err)
+			return nil, errors.Wrap(err, "failed to connect to mongo server")
 		}
 		return NewGridFS(client, db, bucketName, time.Second*5), nil
 	case strings.HasPrefix(uri, "bolt://"):
 		return NewBoltDB(strings.TrimPrefix(uri, "bolt://"), bolt.Options{})
 	}
-	return nil, fmt.Errorf("can't parse store url %s", uri)
+	return nil, errors.Errorf("can't parse store url %s", uri)
 }
 
 // Migrate avatars between stores

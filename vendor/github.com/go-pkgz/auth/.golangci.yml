@@ -29,13 +29,17 @@ linters:
     - revive
     - govet
     - unconvert
-    - unused
+    - megacheck
+    - structcheck
     - gas
     - gocyclo
     - misspell
     - unparam
+    - varcheck
+    - deadcode
     - typecheck
     - ineffassign
+    - varcheck
     - stylecheck
     - gochecknoinits
     - exportloopref
@@ -61,14 +65,6 @@ issues:
       linters:
         - gosec
     - text: "Use of weak cryptographic primitive"
-      linters:
-        - gosec
-    - path: _test\.go
-      text: "Potential Slowloris Attack because ReadHeaderTimeout is not configured in the http.Server"
-      linters:
-        - gosec
-    - path: _test\.go
-      text: "Deferring unsafe method \"Close\" on type \"io.ReadCloser\""
       linters:
         - gosec
 

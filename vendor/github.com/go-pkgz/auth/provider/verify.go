@@ -3,15 +3,14 @@ package provider
 import (
 	"bytes"
 	"crypto/sha1"
-	"fmt"
-	"html/template"
 	"net/http"
 	"strings"
+	"text/template"
 	"time"
 
 	"github.com/go-pkgz/rest"
 	"github.com/golang-jwt/jwt"
-	"github.com/microcosm-cc/bluemonday"
+	"github.com/pkg/errors"
 
 	"github.com/go-pkgz/auth/avatar"
 	"github.com/go-pkgz/auth/logger"
@@ -76,13 +75,13 @@ func (e VerifyHandler) LoginHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if e.TokenService.IsExpired(confClaims) {
-		rest.SendErrorJSON(w, r, e.L, http.StatusForbidden, fmt.Errorf("expired"), "failed to verify confirmation token")
+		rest.SendErrorJSON(w, r, e.L, http.StatusForbidden, errors.New("expired"), "failed to verify confirmation token")
 		return
 	}
 
 	elems := strings.Split(confClaims.Handshake.ID, "::")
 	if len(elems) != 2 {
-		rest.SendErrorJSON(w, r, e.L, http.StatusBadRequest, fmt.Errorf("%s", confClaims.Handshake.ID), "invalid handshake token")
+		rest.SendErrorJSON(w, r, e.L, http.StatusBadRequest, errors.New(confClaims.Handshake.ID), "invalid handshake token")
 		return
 	}
 	user, address := elems[0], elems[1]
@@ -133,16 +132,11 @@ func (e VerifyHandler) LoginHandler(w http.ResponseWriter, r *http.Request) {
 
 // GET /login?site=site&user=name&address=someone@example.com
 func (e VerifyHandler) sendConfirmation(w http.ResponseWriter, r *http.Request) {
-
 	user, address := r.URL.Query().Get("user"), r.URL.Query().Get("address")
-	user = e.sanitize(user)
-	address = e.sanitize(address)
-
 	if user == "" || address == "" {
-		rest.SendErrorJSON(w, r, e.L, http.StatusBadRequest, fmt.Errorf("wrong request"), "can't get user and address")
+		rest.SendErrorJSON(w, r, e.L, http.StatusBadRequest, errors.New("wrong request"), "can't get user and address")
 		return
 	}
-
 	claims := token.Claims{
 		Handshake: &token.Handshake{
 			State: "",
@@ -150,7 +144,7 @@ func (e VerifyHandler) sendConfirmation(w http.ResponseWriter, r *http.Request) 
 		},
 		SessionOnly: r.URL.Query().Get("session") != "" && r.URL.Query().Get("session") != "0",
 		StandardClaims: jwt.StandardClaims{
-			Audience:  e.sanitize(r.URL.Query().Get("site")),
+			Audience:  r.URL.Query().Get("site"),
 			ExpiresAt: time.Now().Add(30 * time.Minute).Unix(),
 			NotBefore: time.Now().Add(-1 * time.Minute).Unix(),
 			Issuer:    e.Issuer,
@@ -199,10 +193,10 @@ func (e VerifyHandler) sendConfirmation(w http.ResponseWriter, r *http.Request) 
 }
 
 // AuthHandler doesn't do anything for direct login as it has no callbacks
-func (e VerifyHandler) AuthHandler(http.ResponseWriter, *http.Request) {}
+func (e VerifyHandler) AuthHandler(w http.ResponseWriter, r *http.Request) {}
 
 // LogoutHandler - GET /logout
-func (e VerifyHandler) LogoutHandler(w http.ResponseWriter, _ *http.Request) {
+func (e VerifyHandler) LogoutHandler(w http.ResponseWriter, r *http.Request) {
 	e.TokenService.Reset(w)
 }
 
@@ -211,18 +205,3 @@ Confirmation for {{.User}} {{.Address}}, site {{.Site}}
 
 Token: {{.Token}}
 `
-
-func (e VerifyHandler) sanitize(inp string) string {
-	p := bluemonday.UGCPolicy()
-	res := p.Sanitize(inp)
-	res = template.HTMLEscapeString(res)
-	res = strings.ReplaceAll(res, "&amp;", "&")
-	res = strings.ReplaceAll(res, "&#34;", "\"")
-	res = strings.ReplaceAll(res, "&#39;", "'")
-	res = strings.ReplaceAll(res, "\n", "")
-	res = strings.TrimSpace(res)
-	if len(res) > 128 {
-		return res[:128]
-	}
-	return res
-}

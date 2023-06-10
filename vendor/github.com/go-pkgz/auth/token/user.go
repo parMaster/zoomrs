@@ -9,6 +9,8 @@ import (
 	"io"
 	"net/http"
 	"regexp"
+
+	"github.com/pkg/errors"
 )
 
 var reValidSha = regexp.MustCompile("^[a-fA-F0-9]{40}$")
@@ -142,13 +144,13 @@ func GetUserInfo(r *http.Request) (user User, err error) {
 
 	ctx := r.Context()
 	if ctx == nil {
-		return User{}, fmt.Errorf("no info about user")
+		return User{}, errors.New("no info about user")
 	}
 	if u, ok := ctx.Value(contextKey("user")).(User); ok {
 		return u, nil
 	}
 
-	return User{}, fmt.Errorf("user can't be parsed")
+	return User{}, errors.New("user can't be parsed")
 }
 
 // SetUserInfo sets user into request context

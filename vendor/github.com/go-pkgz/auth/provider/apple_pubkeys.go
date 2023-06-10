@@ -11,12 +11,13 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"io"
+	"io/ioutil"
 	"math/big"
 	"net/http"
 	"time"
 
 	"github.com/golang-jwt/jwt"
+	"github.com/pkg/errors"
 )
 
 // appleKeysURL is the endpoint URL for fetch Apple’s public key
@@ -52,10 +53,10 @@ func fetchAppleJWK(ctx context.Context, keyURL string) (set appleKeySet, err err
 		keyURL = appleKeysURL
 	}
 
-	req, err := http.NewRequestWithContext(ctx, "GET", keyURL, http.NoBody)
+	req, err := http.NewRequestWithContext(ctx, "GET", keyURL, nil)
 
 	if err != nil {
-		return set, fmt.Errorf("failed to prepare new request for fetch Apple public keys: %w", err)
+		return set, errors.Wrap(err, "failed to prepare new request for fetch Apple public keys")
 	}
 
 	req.Header.Add("accept", AcceptJSONHeader)
@@ -63,18 +64,18 @@ func fetchAppleJWK(ctx context.Context, keyURL string) (set appleKeySet, err err
 
 	res, err := client.Do(req)
 	if err != nil {
-		return set, fmt.Errorf("failed to fetch Apple public keys: %w", err)
+		return set, errors.Wrap(err, "failed to fetch Apple public keys")
 	}
 
-	data, err := io.ReadAll(res.Body)
+	data, err := ioutil.ReadAll(res.Body)
 	if err != nil {
-		return set, fmt.Errorf("failed read data after Apple public key fetched: %w", err)
+		return set, errors.Wrap(err, "failed read data after Apple public key fetched")
 	}
 	defer func() { _ = res.Body.Close() }()
 
 	set, err = parseAppleJWK(data)
 	if err != nil {
-		return set, fmt.Errorf("get set of apple public key failed: %w", err)
+		return set, errors.Wrap(err, "get set of apple public key failed")
 	}
 
 	return set, nil
@@ -91,7 +92,7 @@ func parseAppleJWK(keyData []byte) (set appleKeySet, err error) {
 	keys := make(map[string]*applePublicKey)
 
 	if err = json.Unmarshal(keyData, &rawKeys); err != nil {
-		return set, fmt.Errorf("parse json data with Apple keys failed: %w", err)
+		return set, errors.Wrap(err, "parse json data with Apple keys failed")
 	}
 	for _, rawKey := range rawKeys.Keys {
 		key, err := parseApplePublicKey(rawKey)
@@ -128,12 +129,12 @@ func (apk *applePublicKey) createApplePublicKey(n, e string) error {
 
 	bufferN, err := base64.URLEncoding.WithPadding(base64.NoPadding).DecodeString(n) // decode modulus
 	if err != nil {
-		return fmt.Errorf("failed to decode Apple public key modulus (n): %w", err)
+		return errors.Wrap(err, "failed to decode Apple public key modulus (n)")
 	}
 
 	bufferE, err := base64.URLEncoding.WithPadding(base64.NoPadding).DecodeString(e) // decode exponent
 	if err != nil {
-		return fmt.Errorf("failed to decode Apple public key exponent (e): %w", err)
+		return errors.Wrap(err, "failed to decode Apple public key exponent (e)")
 	}
 
 	// create rsa public key from JWK data
@@ -152,7 +153,7 @@ type appleKeySet struct {
 // get return Apple public key with specific KeyID (kid)
 func (aks *appleKeySet) get(kid string) (keys *applePublicKey, err error) {
 	if aks.keys == nil || len(aks.keys) == 0 {
-		return nil, fmt.Errorf("failed to get key in appleKeySet, key set is nil or empty")
+		return nil, errors.New("failed to get key in appleKeySet, key set is nil or empty")
 	}
 
 	if val, ok := aks.keys[kid]; ok {
@@ -166,7 +167,7 @@ func (aks *appleKeySet) keyFunc(token *jwt.Token) (interface{}, error) {
 
 	keyID, ok := token.Header["kid"].(string)
 	if !ok {
-		return nil, fmt.Errorf("get JWT kid header not found")
+		return nil, errors.New("get JWT kid header not found")
 	}
 	key, err := aks.get(keyID)
 

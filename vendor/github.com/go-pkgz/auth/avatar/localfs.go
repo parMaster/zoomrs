@@ -10,6 +10,8 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+
+	"github.com/pkg/errors"
 )
 
 // LocalFS implements Store for local file system
@@ -28,28 +30,28 @@ func NewLocalFS(storePath string) *LocalFS {
 // userID can be avatarID as well, in this case encoding just strip .image prefix
 func (fs *LocalFS) Put(userID string, reader io.Reader) (avatar string, err error) {
 	if reader == nil {
-		return "", fmt.Errorf("empty reader")
+		return "", errors.New("empty reader")
 	}
 	id := encodeID(userID)
 	location := fs.location(id) // location adds partition to path
 
-	if e := os.MkdirAll(location, 0o750); e != nil {
-		return "", fmt.Errorf("failed to mkdir avatar location %s: %w", location, e)
+	if e := os.MkdirAll(location, 0750); e != nil {
+		return "", errors.Wrapf(e, "failed to mkdir avatar location %s", location)
 	}
 
 	avFile := path.Join(location, id+imgSfx)
-	fh, err := os.Create(avFile) //nolint
+	fh, err := os.Create(avFile)
 	if err != nil {
-		return "", fmt.Errorf("can't create file %s: %w", avFile, err)
+		return "", errors.Wrapf(err, "can't create file %s", avFile)
 	}
-	defer func() { //nolint
+	defer func() {
 		if e := fh.Close(); e != nil {
-			err = fmt.Errorf("can't close avatar file %s: %w", avFile, e)
+			err = errors.Wrapf(err, "can't close avatar file %s", avFile)
 		}
 	}()
 
 	if _, err = io.Copy(fh, reader); err != nil {
-		return "", fmt.Errorf("can't save file %s: %w", avFile, err)
+		return "", errors.Wrapf(err, "can't save file %s", avFile)
 	}
 	return id + imgSfx, nil
 }
@@ -59,7 +61,7 @@ func (fs *LocalFS) Get(avatar string) (reader io.ReadCloser, size int, err error
 	location := fs.location(strings.TrimSuffix(avatar, imgSfx))
 	fh, err := os.Open(path.Join(location, avatar)) //nolint
 	if err != nil {
-		return nil, 0, fmt.Errorf("can't load avatar %s, id: %w", avatar, err)
+		return nil, 0, errors.Wrapf(err, "can't load avatar %s, id", avatar)
 	}
 	if fi, e := fh.Stat(); e == nil {
 		size = int(fi.Size())
@@ -98,13 +100,10 @@ func (fs *LocalFS) List() (ids []string, err error) {
 			}
 			return nil
 		})
-	if err != nil {
-		return nil, fmt.Errorf("can't list avatars: %w", err)
-	}
-	return ids, nil
+	return ids, errors.Wrap(err, "can't list avatars")
 }
 
-// Close LocalFS does nothing but satisfies interface
+// Close gridfs does nothing but satisfies interface
 func (fs *LocalFS) Close() error {
 	return nil
 }

@@ -14,7 +14,7 @@ import (
 	"encoding/json"
 	"encoding/pem"
 	"fmt"
-	"io"
+	"io/ioutil"
 	"net/http"
 	"net/url"
 	"os"
@@ -25,6 +25,7 @@ import (
 
 	"github.com/go-pkgz/rest"
 	"github.com/golang-jwt/jwt"
+	"github.com/pkg/errors"
 
 	"github.com/go-pkgz/auth/logger"
 	"github.com/go-pkgz/auth/token"
@@ -70,10 +71,9 @@ type appleVerificationResponse struct {
 
 // AppleConfig is the main oauth2 required parameters for "Sign in with Apple"
 type AppleConfig struct {
-	ClientID     string // the identifier Services ID for your app created in Apple developer account.
-	TeamID       string // developer Team ID (10 characters), required for create JWT. It available, after signed in at developer account, by link: https://developer.apple.com/account/#/membership
-	KeyID        string // private key ID  assigned to private key obtain in Apple developer account
-	ResponseMode string // changes method of receiving data in callback. Default value "form_post" (https://developer.apple.com/documentation/sign_in_with_apple/request_an_authorization_to_the_sign_in_with_apple_server?changes=_1_2#4066168)
+	ClientID string // the identifier Services ID for your app created in Apple developer account.
+	TeamID   string // developer Team ID (10 characters), required for create JWT. It available, after signed in at developer account, by link: https://developer.apple.com/account/#/membership
+	KeyID    string // private key ID  assigned to private key obtain in Apple developer account
 
 	scopes       []string         // for this package allow only username scope and UID in token claims. Apple service API provide only "email" and "name" scope values (https://developer.apple.com/documentation/sign_in_with_apple/clientconfigi/3230955-scope)
 	privateKey   interface{}      // private key from Apple obtained in developer account (the keys section). Required for create the Client Secret (https://developer.apple.com/documentation/sign_in_with_apple/generate_and_validate_tokens#3262048)
@@ -119,14 +119,14 @@ func LoadApplePrivateKeyFromFile(path string) LoadFromFileFunc {
 // LoadPrivateKey implement pre-defined (built-in) PrivateKeyLoaderInterface interface method for load private key from local file
 func (lf LoadFromFileFunc) LoadPrivateKey() ([]byte, error) {
 	if lf.Path == "" {
-		return nil, fmt.Errorf("empty private key path not allowed")
+		return nil, errors.New("empty private key path not allowed")
 	}
 
 	keyFile, err := os.Open(lf.Path)
 	if err != nil {
 		return nil, err
 	}
-	keyValue, err := io.ReadAll(keyFile)
+	keyValue, err := ioutil.ReadAll(keyFile)
 	if err != nil {
 		return nil, err
 	}
@@ -157,22 +157,16 @@ func NewApple(p Params, appleCfg AppleConfig, privateKeyLoader PrivateKeyLoaderI
 		return nil, fmt.Errorf("required params missed: %s", strings.Join(emptyParams, ", "))
 	}
 
-	responseMode := "form_post"
-	if appleCfg.ResponseMode != "" {
-		responseMode = appleCfg.ResponseMode
-	}
-
 	ah := AppleHandler{
 		Params: p,
 		name:   "apple", // static name for an Apple provider
 
 		conf: AppleConfig{
-			ClientID:     appleCfg.ClientID,
-			TeamID:       appleCfg.TeamID,
-			KeyID:        appleCfg.KeyID,
-			scopes:       []string{"name"},
-			jwkURL:       appleKeysURL,
-			ResponseMode: responseMode,
+			ClientID: appleCfg.ClientID,
+			TeamID:   appleCfg.TeamID,
+			KeyID:    appleCfg.KeyID,
+			scopes:   []string{"name"},
+			jwkURL:   appleKeysURL,
 		},
 
 		endpoint: oauth2.Endpoint{
@@ -190,7 +184,7 @@ func NewApple(p Params, appleCfg AppleConfig, privateKeyLoader PrivateKeyLoaderI
 	}
 
 	if privateKeyLoader == nil {
-		return nil, fmt.Errorf("private key loader undefined")
+		return nil, errors.New("private key loader undefined")
 	}
 
 	ah.PrivateKeyLoader = privateKeyLoader
@@ -204,22 +198,18 @@ func (ah *AppleHandler) initPrivateKey() error {
 
 	sKey, err := ah.PrivateKeyLoader.LoadPrivateKey()
 	if err != nil {
-		return fmt.Errorf("problem with private key loading: %w", err)
+		return errors.Wrap(err, "problem with private key loading")
 	}
 
 	block, _ := pem.Decode(sKey)
 	if block == nil {
-		return fmt.Errorf("empty block after decoding")
+		return errors.New("empty block after decoding")
 	}
 	ah.conf.privateKey, err = x509.ParsePKCS8PrivateKey(block.Bytes)
 	if err != nil {
 		return err
 	}
-	publicKey, ok := ah.conf.privateKey.(*ecdsa.PrivateKey)
-	if !ok {
-		return fmt.Errorf("provided private key is not ECDSA")
-	}
-	ah.conf.publicKey = publicKey.Public()
+	ah.conf.publicKey = ah.conf.privateKey.(*ecdsa.PrivateKey).Public()
 	ah.conf.clientSecret, err = ah.createClientSecret()
 	if err != nil {
 		return err
@@ -230,7 +220,7 @@ func (ah *AppleHandler) initPrivateKey() error {
 // tokenKeyFunc use for verify JWT sign, it receives the parsed token and should return the key for validating.
 func (ah *AppleHandler) tokenKeyFunc(jwtToken *jwt.Token) (interface{}, error) {
 	if jwtToken == nil {
-		return nil, fmt.Errorf("failed to call token keyFunc, because token is nil")
+		return nil, errors.New("failed to call token keyFunc, because token is nil")
 	}
 	return ah.conf.publicKey, nil // extract public key from private key
 }
@@ -411,7 +401,7 @@ func (ah *AppleHandler) exchange(ctx context.Context, code, redirectURI string, 
 	if tkn, err := jwt.Parse(ah.conf.clientSecret, ah.tokenKeyFunc); err != nil || tkn == nil {
 		ah.conf.clientSecret, err = ah.createClientSecret()
 		if err != nil {
-			return fmt.Errorf("client secret create failed: %w", err)
+			return errors.Wrap(err, "client secret create failed")
 		}
 	}
 
@@ -440,7 +430,7 @@ func (ah *AppleHandler) exchange(ctx context.Context, code, redirectURI string, 
 	// Trying to decode (unmarshal json) data of response
 	err = json.NewDecoder(res.Body).Decode(result)
 	if err != nil {
-		return fmt.Errorf("unmarshalling data from apple service response failed: %w", err)
+		return errors.Wrap(err, "unmarshalling data from apple service response failed")
 	}
 
 	defer func() {
@@ -463,7 +453,7 @@ func (ah *AppleHandler) exchange(ctx context.Context, code, redirectURI string, 
 func (ah *AppleHandler) createClientSecret() (string, error) {
 
 	if ah.conf.privateKey == nil {
-		return "", fmt.Errorf("private key can't be empty")
+		return "", errors.New("private key can't be empty")
 	}
 	// Create a claims
 	now := time.Now()
@@ -510,10 +500,6 @@ func (ah *AppleHandler) prepareLoginURL(state, path string) (string, error) {
 
 	scopesList := strings.Join(ah.conf.scopes, " ")
 
-	if scopesList != "" && ah.conf.ResponseMode != "form_post" {
-		return "", fmt.Errorf("response_mode must be form_post if scope is not empty")
-	}
-
 	authURL, err := url.Parse(ah.endpoint.AuthURL)
 	if err != nil {
 		return "", err
@@ -522,7 +508,7 @@ func (ah *AppleHandler) prepareLoginURL(state, path string) (string, error) {
 	query := authURL.Query()
 	query.Set("state", state)
 	query.Set("response_type", "code")
-	query.Set("response_mode", ah.conf.ResponseMode)
+	query.Set("response_mode", "form_post")
 	query.Set("client_id", ah.conf.ClientID)
 	query.Set("scope", scopesList)
 	query.Set("redirect_uri", ah.makeRedirURL(path))
