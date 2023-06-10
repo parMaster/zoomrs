@@ -57,6 +57,8 @@ func (s *Commander) Run(opts Options) {
 		} else {
 			log.Printf("[INFO] CheckConsistency: OK, %d", checked)
 		}
+	default:
+		log.Printf("[INFO] command %s is not supported", opts.Cmd)
 	}
 
 	log.Printf("[INFO] cli job done\n*********************************")
