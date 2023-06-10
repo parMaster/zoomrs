@@ -102,12 +102,25 @@ func (s *Server) statusHandler(rw http.ResponseWriter, r *http.Request) {
 	stats, _ := s.store.Stats()
 
 	if stats == nil {
-		rw.WriteHeader(http.StatusInternalServerError)
+		rw.WriteHeader(http.StatusNoContent)
 		return
 	}
 
+	_, qok := stats[model.Queued]
+	_, fok := stats[model.Failed]
+	_, dok := stats[model.Downloading]
+
+	var status string
+	if qok || dok {
+		status = "LOADING"
+	} else if fok && !dok && !qok {
+		status = "FAILED"
+	} else {
+		status = "OK"
+	}
+
 	resp := map[string]interface{}{
-		"status": "OK",
+		"status": status,
 		"stats":  stats,
 	}
 
