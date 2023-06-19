@@ -82,6 +82,29 @@ status can be:
 
 This API is useful for monitoring the service status and triggering alerts when something goes wrong.
 
+Another example response, when there are recordings in `queued` and `downloading` status:
+```json 
+{
+  "stats": {
+    "downloaded": {
+      "count": 5292,
+      "size_gb": 1765,
+      "size_mb": 1808161
+    },
+    "downloading": {
+      "count": 1,
+      "size_gb": 0,
+      "size_mb": 666
+    },
+    "queued": {
+      "count": 88,
+      "size_gb": 27,
+      "size_mb": 28044
+    }
+  },
+  "status": "LOADING"
+}
+```
 
 #### GET `/stats[/<K|M|G>]`
 Auth required. Returns the total size of the recordings grouped by date. Optional parameter `K`, `M` or `G` can be used to specify the size in KB, MB or GB respectively. If no parameter is specified, the size is returned in bytes. Example response:
