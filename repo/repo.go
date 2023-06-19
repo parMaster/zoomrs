@@ -246,7 +246,7 @@ func (r *Repository) DownloadRecord(record *model.Record) error {
 	}
 	if usage.Free-(r.cfg.Storage.KeepFreeSpace*1024*1024*1024) < uint64(record.FileSize) {
 		r.store.UpdateRecord(record.Id, model.Failed, "")
-		return fmt.Errorf("not enough space to download %s (%d free, %d requred)", record.Id, usage.Free, record.FileSize)
+		return fmt.Errorf("not enough space to download %s (%d free, %d + %d GB requred)", record.Id, usage.Free, record.FileSize, r.cfg.Storage.KeepFreeSpace)
 	}
 
 	url := record.DownloadURL + "?access_token=" + token.AccessToken
