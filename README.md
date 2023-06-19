@@ -135,8 +135,23 @@ where `2` is 2 days before today, so all the recordings from the bay before yest
 
 will trash all recordings from the day before yesterday every day at 10:00 AM. `--config` option is used to specify the path to the configuration file. `--dbg` option can be used to enable debug logging. Logs are written to stdout, and redirected to `/var/log/cron.log` in the example above.
 
+_Note that CLI tool uses different configuration file then the server with different Zoom API credentials to avoid spoiling services's auth token running CLI._
+
+### Database backup
+Backup database file regularly to prevent data loss. See example shell script at `dist/backup_db.sh`. It can be run as a cron job like this:
+> \# 0 10 * * * sh $HOME/go/src/zoomrs/backup_db.sh
+
 ## Contributing
 Pull requests are welcome. For major changes, please open an issue first to discuss what you would like to change. Check the existing issues to see if your problem is already being discussed or if you're willing to help with one of them. Tests are highly appreciated.
+
+## License
+[MIT](https://choosealicense.com/licenses/mit/) © [Dmytro Borshchanenko](https://github.com/parMaster) 2023
+
+## Responsible disclosure
+If you have any security issue to report, contact project owner directly at [master@parMaster.com.ua](mailto:master@parMaster.com.ua) or use Issues section of this repository.
+
+## Responsibility
+The author of this project is not responsible for any damage caused by the use of this software. Use it at your own risk.
 
 ## Credits
 - [lgr](github.com/go-pkgz/lgr) - simple but effective logging package
