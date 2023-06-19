@@ -1,5 +1,10 @@
 # Zoomrs - Zoom meetings recordings download service
 
+[![Go Report Card](https://goreportcard.com/badge/github.com/parMaster/zoomrs)](https://goreportcard.com/report/github.com/parMaster/zoomrs)
+[![Go](https://github.com/parMaster/zoomrs/actions/workflows/go.yml/badge.svg)](https://github.com/parMaster/zoomrs/actions/workflows/go.yml)
+[![License](https://img.shields.io/github/license/parMaster/zoomrs)](https://github.com/parMaster/zoomrs/blob/main/LICENSE)
+![GitHub go.mod Go version](https://img.shields.io/github/go-mod/go-version/parMaster/zoomrs?filename=go.mod)
+
 Save thousands of dollars on Zoom Cloud Recording Storage! Download records automatically and store locally. Provide simple but effective web frontend to watch and share meeting recordings.
 
 ## Features
@@ -14,24 +19,33 @@ Save thousands of dollars on Zoom Cloud Recording Storage! Download records auto
 Zoomrs can be installed as a systemd service or run in foreground mode.
 
 ## Configuration
-See `config/config_example.yaml` for example configuration file, available options and their descriptions. 
+See `config/config_example.yaml` for example configuration file, available options and their descriptions. Copy it to `config/config.yaml` and edit it to your liking.
+
+### Foreground mode 
+1. Clone the repository from GitHub
+
+		git clone https://github.com/parMaster/zoomrs.git
+
+2. Make sure `config/config.yaml` exists and is configured properly
+3. Run `make run` to build the binary and run it in foreground mode
+
+		make run
+4. To stop the service press `Ctrl+C`
 
 ### Systemd service
-1. Clone the repository from GitHub `git clone https://github.com/parMaster/zoomrs.git`
-2. Edit `config/config.yaml` to your liking, use `config/config_example.yaml` as a reference
-3. Run `make deploy` to build the binary and copy everything where it belongs (see `Makefile` for details), enable and run the service
-4. Run `make status` to check the status of the service
+1. Repeat steps 1 and 2 from the previous section
+2. Run `make deploy` to build the binary and copy everything where it belongs (see `Makefile` for details), enable and run the service
+
+		make deploy
+3. Run `make status` to check the status of the service
+
+		make status
 
 Log files are located at `/var/log/zoomrs.log` and `/var/log/zoomrs.err` by default.
 
-### Foreground mode
-1. Repeat steps 1 and 2 from the previous section
-2. Run `make run` to build the binary and run it in foreground mode
-3. To stop the service press `Ctrl+C`
-
 ## Usage
 ### Web frontend
-Web frontend is available at `http://localhost:8080` by default. You can change the port in the configuration file.
+Web frontend is available at `http://localhost:8099` by default. You can change the port in the configuration file (`server.listen` parameter).
 
 ### Web frontend Pages
 
@@ -111,35 +125,40 @@ Response when some meetings are not loaded:
 ## CLI tool
 Zoomrs comes with a CLI tool to trash/delete recordings from Zoom Cloud. It is useful when running miltiple servers and you want to delete recordings from Zoom Cloud only after all servers have downloaded them. CLI tool is located at `cmd/cli/main.go`. Run `make` to build it and put to `dist/zoomrs-cli`.
 It can be run like this:
-> go run ./cmd/cli --cmd check
+
+		go run ./cmd/cli --cmd check
 
 or like this:
-> ./dist/zoomrs-cli --cmd check
+
+		./dist/zoomrs-cli --cmd check
 
 Available commands:
 - `check` - checks the consistency of the repository: if all recordings are downloaded and if all downloaded recordings are present on the disk, also the size of each recording file is checked. Run this command periodically to make sure everything is OK. 
 Run it like this:
-> ./dist/zoomrs-cli --cmd check
 
-Example output:
-```
-2023/06/19 17:15:01 [INFO]  starting CheckConsistency
-2023/06/19 17:15:01 [INFO]  Checked files: 5278
-2023/06/19 17:15:01 [INFO]  CheckConsistency: OK, 5278
-```
+		./dist/zoomrs-cli --cmd check
+	Example output:
+	```
+	2023/06/19 17:15:01 [INFO]  starting CheckConsistency
+	2023/06/19 17:15:01 [INFO]  Checked files: 5278
+	2023/06/19 17:15:01 [INFO]  CheckConsistency: OK, 5278
+	```
 - `trash` - trashes recordings from Zoom Cloud. Run it like this:
-> ./zoomrs-cli --dbg --trash 2
 
-where `2` is 2 days before today, so all the recordings from the bay before yesterday will be trashed. This is designed this way to run it as a cron job every day. Cron job line example:
-> 00 10 * * * cd $HOME/go/src/zoomrs/dist && ./zoomrs-cli --trash 2 --config ../config/config_cli.yml >> /var/log/cron.log 2>&1
+		./zoomrs-cli --dbg --trash 2
 
-will trash all recordings from the day before yesterday every day at 10:00 AM. `--config` option is used to specify the path to the configuration file. `--dbg` option can be used to enable debug logging. Logs are written to stdout, and redirected to `/var/log/cron.log` in the example above.
+	where `2` is 2 days before today, so all the recordings from the bay before yesterday will be trashed. This is designed this way to run it as a cron job every day. Cron job line example:
 
-_Note that CLI tool uses different configuration file then the server with different Zoom API credentials to avoid spoiling services's auth token running CLI._
+		00 10 * * * cd $HOME/go/src/zoomrs/dist && ./zoomrs-cli --trash 2 --config ../config/config_cli.yml >> /var/log/cron.log 2>&1
+
+	will trash all recordings from the day before yesterday every day at 10:00 AM. `--config` option is used to specify the path to the configuration file. `--dbg` option can be used to enable debug logging. Logs are written to stdout, and redirected to `/var/log/cron.log` in the example above.
+
+	_Note that CLI tool uses different configuration file then the server with different Zoom API credentials to avoid spoiling services's auth token when running CLI. Also, running multi-server setup you want to trash recordings only after all servers have downloaded them, so you need to run CLI tool on one of the servers, allow trashing records in CLI config and deny it in servers configs._
 
 ### Database backup
 Backup database file regularly to prevent data loss. See example shell script at `dist/backup_db.sh`. It can be run as a cron job like this:
-> \# 0 10 * * * sh $HOME/go/src/zoomrs/backup_db.sh
+
+		# 0 10 * * * sh $HOME/go/src/zoomrs/backup_db.sh
 
 ## Contributing
 Pull requests are welcome. For major changes, please open an issue first to discuss what you would like to change. Check the existing issues to see if your problem is already being discussed or if you're willing to help with one of them. Tests are highly appreciated.
