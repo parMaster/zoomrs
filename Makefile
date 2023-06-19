@@ -40,6 +40,7 @@ deploy:
 	sudo systemctl stop zoomrs.service || true
 	sudo cp dist/zoomrs /usr/bin/
 	sudo chown $(USER):$(GROUP) /usr/bin/zoomrs
+	sed -i "s/%USER%/$(USER)/g" dist/zoomrs.service
 	sudo cp dist/zoomrs.service /etc/systemd/system/
 	sudo mkdir -p /etc/zoomrs
 	sudo chown $(USER):$(GROUP) /etc/zoomrs
