@@ -145,7 +145,7 @@ Backup database file regularly to prevent data loss. See example shell script at
 Pull requests are welcome. For major changes, please open an issue first to discuss what you would like to change. Check the existing issues to see if your problem is already being discussed or if you're willing to help with one of them. Tests are highly appreciated.
 
 ## License
-[MIT](https://choosealicense.com/licenses/mit/) © [Dmytro Borshchanenko](https://github.com/parMaster) 2023
+[GNU GPLv3](https://choosealicense.com/licenses/gpl-3.0/) © [Dmytro Borshchanenko](https://github.com/parMaster) 2023
 
 ## Responsible disclosure
 If you have any security issue to report, contact project owner directly at [master@parMaster.com.ua](mailto:master@parMaster.com.ua) or use Issues section of this repository.
