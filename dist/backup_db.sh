@@ -11,4 +11,4 @@ mkdir -p $HOME/backups/$now
 cp -r /data/_db $HOME/backups/$now
 
 # cron job to run this script every day at 10am
-# 0 10 * * * sh /home/gusto/go/src/zoomrs/backup_db.sh
+# 0 10 * * * sh $HOME/go/src/zoomrs/backup_db.sh
