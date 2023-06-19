@@ -19,6 +19,7 @@ storage:
   type: sqlite
   path: file:.tmp/data1.db?mode=rwc&_journal_mode=WAL
   repository: .tmp # Path to download files
+  keep_free_space: 100 # GB
 syncable:
     important: ["shared_screen_with_gallery_view"] # recordings of these types will be downloaded
     alternative: ["shared_screen_with_speaker_view"] # recordings of these types will be downloaded if no important types are available

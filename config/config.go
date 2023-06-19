@@ -10,21 +10,21 @@ import (
 
 // Parameters is the main configuration struct
 type Parameters struct {
-	Server    Server    `yaml:"server"`
-	Client    Client    `yaml:"client"`
-	Storage   Storage   `yaml:"storage"`
-	Syncable  Syncable  `yaml:"syncable"`
-	Commander Commander `yaml:"commander"`
+	Server    Server    `yaml:"server"`    // Server configuration
+	Client    Client    `yaml:"client"`    // Zoom client configuration
+	Storage   Storage   `yaml:"storage"`   // Storage configuration
+	Syncable  Syncable  `yaml:"syncable"`  // Syncable configuration
+	Commander Commander `yaml:"commander"` // Commander configuration
 }
 
 // Client is the Zoom client configuration
 type Client struct {
-	AccountId        string `yaml:"account_id"`
-	Id               string `yaml:"id"`
-	Secret           string `yaml:"secret"`
-	DeleteDownloaded bool   `yaml:"delete_downloaded"`
-	TrashDownloaded  bool   `yaml:"trash_downloaded"`
-	DeleteSkipped    bool   `yaml:"delete_skipped"`
+	AccountId        string `yaml:"account_id"`        // Zoom account id
+	Id               string `yaml:"id"`                // Zoom client id
+	Secret           string `yaml:"secret"`            // Zoom client secret
+	DeleteDownloaded bool   `yaml:"delete_downloaded"` // Delete downloaded files from Zoom cloud
+	TrashDownloaded  bool   `yaml:"trash_downloaded"`  // Move downloaded files to trash
+	DeleteSkipped    bool   `yaml:"delete_skipped"`    // Delete skipped files from Zoom cloud (the ones that are shorter than MinDuration)
 }
 
 type Server struct {
@@ -40,29 +40,24 @@ type Server struct {
 }
 
 type Storage struct {
-	// Type of storage to use
-	// Currently supported: sqlite, memory
-	Type       string `yaml:"type"`
-	Path       string `yaml:"path"` // Path to the database file
-	Repository string `yaml:"repository"`
+	Type          string `yaml:"type"`            // Type of storage to use. Currently supported: sqlite
+	Path          string `yaml:"path"`            // Path to the database file
+	Repository    string `yaml:"repository"`      // Path to the repository folder where downloaded files are stored
+	KeepFreeSpace uint64 `yaml:"keep_free_space"` // Keep at least this amount of free space (in GB)
 }
 
 type Syncable struct {
-	// Sync types important to download
-	Important []string `yaml:"important"`
-	// Sync types to download if important is not available
-	Alternative []string `yaml:"alternative"`
-	// Sync types to download if possible
-	Optional []string `yaml:"optional"`
-	// Minutes - Minimal duration meeting. Meetings shorter than this value will not be synced
-	MinDuration int `yaml:"min_duration"`
+	Important   []string `yaml:"important"`    // Sync types important to download
+	Alternative []string `yaml:"alternative"`  // Sync types to download if important is not available
+	Optional    []string `yaml:"optional"`     // Sync types to download if possible
+	MinDuration int      `yaml:"min_duration"` // Minutes - Minimal duration meeting. Meetings shorter than this value will not be synced
 }
 
 type Commander struct {
-	Instances []string `yaml:"instances"`
+	Instances []string `yaml:"instances"` // List of instances to check for download status against, before trash/deleting
 }
 
-// New creates a new Parameters from the given file
+// NewConfig creates a new Parameters from the given file
 func NewConfig(fname string) (*Parameters, error) {
 	p := &Parameters{}
 	data, err := os.ReadFile(fname)

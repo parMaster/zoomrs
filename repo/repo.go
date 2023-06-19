@@ -62,6 +62,12 @@ func NewRepository(store storage.Storer, client Client, cfg config.Parameters) *
 }
 
 func (r *Repository) SyncJob(ctx context.Context) {
+
+	if len(r.syncable.Important)+len(r.syncable.Alternative)+len(r.syncable.Optional) == 0 {
+		log.Printf("[DEBUG] No sync types configured. Sync job will not run")
+		return
+	}
+
 	ticker := time.NewTicker(60 * time.Minute)
 	for {
 		meetings, err := r.client.GetMeetings(1)
@@ -90,11 +96,6 @@ func (r *Repository) SyncJob(ctx context.Context) {
 func (r *Repository) SyncMeetings(meetings *[]model.Meeting) error {
 	if len(*meetings) == 0 {
 		log.Printf("[DEBUG] No meetings to sync")
-		return nil
-	}
-
-	if len(r.syncable.Important)+len(r.syncable.Alternative)+len(r.syncable.Optional) == 0 {
-		log.Printf("[DEBUG] No sync types configured")
 		return nil
 	}
 
@@ -243,7 +244,7 @@ func (r *Repository) DownloadRecord(record *model.Record) error {
 		r.store.UpdateRecord(record.Id, model.Failed, "")
 		return fmt.Errorf("failed to check free space, %v", err)
 	}
-	if usage.Free < uint64(record.FileSize) {
+	if usage.Free-(r.cfg.Storage.KeepFreeSpace*1024*1024*1024) < uint64(record.FileSize) {
 		r.store.UpdateRecord(record.Id, model.Failed, "")
 		return fmt.Errorf("not enough space to download %s (%d free, %d requred)", record.Id, usage.Free, record.FileSize)
 	}
