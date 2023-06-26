@@ -1,0 +1,10 @@
+services:
+  zoomrs:
+    build: .
+    image: parmaster/zoomrs:main
+    container_name: zoomrs
+    hostname: localhost
+    ports:
+      - "8080:8080"
+    volumes:
+      - /data:/data
