@@ -16,7 +16,7 @@ Save thousands of dollars on Zoom Cloud Recording Storage! Download records auto
 - Run multiple instances of the service for redundancy
 
 ## Installation
-Zoomrs can be installed as a systemd service or run in foreground mode.
+Zoomrs can be installed as a systemd service, run in foreground mode or in the docker container.
 
 ## Configuration
 See `config/config_example.yaml` for example configuration file, available options and their descriptions. Copy it to `config/config.yaml` and edit it to your liking.
@@ -42,6 +42,17 @@ See `config/config_example.yaml` for example configuration file, available optio
 		make status
 
 Log files are located at `/var/log/zoomrs.log` and `/var/log/zoomrs.err` by default.
+
+### Docker container
+1. Clone the repository from GitHub
+
+		git clone https://github.com/parMaster/zoomrs.git
+
+2. Make sure `config/config.yaml` exists and is configured properly
+3. Check configuration parameters in Dockerfile and docker-compose.yml
+4. Build and run container
+
+		docker-compose up -d
 
 ## Usage
 ### Web frontend
