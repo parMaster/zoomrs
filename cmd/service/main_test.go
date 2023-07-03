@@ -59,7 +59,7 @@ func Test_CheckConsistency(t *testing.T) {
 		t.Skip(err.Error())
 	}
 
-	recs, err := s.GetRecordsByStatus(model.Downloaded)
+	recs, err := s.GetRecordsByStatus(model.StatusDownloaded)
 	assert.NoError(t, err)
 	var checked int
 	for _, rec := range recs {

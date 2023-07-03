@@ -39,7 +39,7 @@ func (s *Commander) Run(opts Options) {
 		log.Fatalf("[ERROR] failed to init storage: %e", err)
 	}
 
-	repo := repo.NewRepository(s.store, s.client, *s.cfg)
+	repo := repo.NewRepository(s.store, s.client, s.cfg)
 
 	// Run cleanup job
 	// crontab line example: "00 10 * * * cd $HOME/go/src/zoomrs/dist && ./zoomrs-cli --dbg --trash 2 --config ../config/config_cli.yml >> /var/log/cron.log 2>&1"

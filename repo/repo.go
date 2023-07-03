@@ -37,11 +37,11 @@ type syncable struct {
 type Repository struct {
 	store    storage.Storer
 	client   Client
-	cfg      config.Parameters
+	cfg      *config.Parameters
 	syncable syncable
 }
 
-func NewRepository(store storage.Storer, client Client, cfg config.Parameters) *Repository {
+func NewRepository(store storage.Storer, client Client, cfg *config.Parameters) *Repository {
 
 	sync := syncable{
 		Important:   make(map[model.RecordType]bool),
@@ -230,7 +230,7 @@ func (r *Repository) DownloadRecord(record *model.Record) error {
 	if err != nil {
 		return err
 	}
-	r.store.UpdateRecord(record.Id, model.Downloading, "")
+	r.store.UpdateRecord(record.Id, model.StatusDownloading, "")
 
 	path := r.cfg.Storage.Repository + "/" + record.DateTime[:10] + "/" + record.Id
 	err = r.prepareDestination(path)
@@ -238,43 +238,40 @@ func (r *Repository) DownloadRecord(record *model.Record) error {
 		return err
 	}
 
-	// check if there is enough space to download the file
-	usage, err := disk.Usage(r.cfg.Storage.Repository)
+	deleted, err := r.freeUpSpace()
 	if err != nil {
-		r.store.UpdateRecord(record.Id, model.Failed, "")
-		return fmt.Errorf("failed to check free space, %v", err)
+		log.Printf("[ERROR] failed to free up space, %v", err)
 	}
-	if usage.Free-(r.cfg.Storage.KeepFreeSpace*1024*1024*1024) < uint64(record.FileSize) {
-		r.store.UpdateRecord(record.Id, model.Failed, "")
-		return fmt.Errorf("not enough space to download %s (%d free, %d + %d GB requred)", record.Id, usage.Free, record.FileSize, r.cfg.Storage.KeepFreeSpace)
+	if deleted > 0 {
+		log.Printf("[INFO] Deleted %d old recordings to free up space", deleted)
 	}
 
 	url := record.DownloadURL + "?access_token=" + token.AccessToken
 	resp, err := grab.Get(path, url)
 	if err != nil {
-		r.store.UpdateRecord(record.Id, model.Failed, "")
+		r.store.UpdateRecord(record.Id, model.StatusFailed, "")
 		return fmt.Errorf("failed to download %s, %v", url, err)
 	}
 
 	// check if the download was successful
 	if resp.HTTPResponse.StatusCode != 200 {
-		r.store.UpdateRecord(record.Id, model.Failed, "")
+		r.store.UpdateRecord(record.Id, model.StatusFailed, "")
 		return fmt.Errorf("failed to download %s, status %d", url, resp.HTTPResponse.StatusCode)
 	}
 	// check if the file is not empty
 	if resp.Size() == 0 || resp.Size() != int64(record.FileSize) {
-		r.store.UpdateRecord(record.Id, model.Failed, "")
+		r.store.UpdateRecord(record.Id, model.StatusFailed, "")
 		return fmt.Errorf("failed to download %s, size %d", url, resp.Size())
 	}
 
 	// check if resp.Filename extension matches record.FileExtension
 	if resp.Filename[len(resp.Filename)-len(record.FileExtension):] != strings.ToLower(record.FileExtension) {
-		r.store.UpdateRecord(record.Id, model.Failed, "")
+		r.store.UpdateRecord(record.Id, model.StatusFailed, "")
 		return fmt.Errorf("failed to download %s, extension %s", url, resp.Filename[len(resp.Filename)-len(record.FileExtension):])
 	}
 
 	log.Printf("[DEBUG] Download saved to %s", resp.Filename)
-	r.store.UpdateRecord(record.Id, model.Downloaded, resp.Filename)
+	r.store.UpdateRecord(record.Id, model.StatusDownloaded, resp.Filename)
 	return nil
 }
 
@@ -296,7 +293,7 @@ func (r *Repository) meetingRecordsLoaded(meetingId string) bool {
 		return false
 	}
 	for _, record := range records {
-		if record.Status != model.Downloaded {
+		if record.Status != model.StatusDownloaded {
 			return false
 		}
 	}
@@ -410,7 +407,7 @@ func (r *Repository) requestMeetingsLoaded(meetings []string) (loaded bool, err 
 
 // CheckConsistency checks if all downloaded files exist and have correct size
 func (r *Repository) CheckConsistency() (checked int, result error) {
-	recs, err := r.store.GetRecordsByStatus(model.Downloaded)
+	recs, err := r.store.GetRecordsByStatus(model.StatusDownloaded)
 	if err != nil {
 		return 0, err
 	}
@@ -419,24 +416,73 @@ func (r *Repository) CheckConsistency() (checked int, result error) {
 		// check if file with path exists
 		if _, err := os.Stat(rec.FilePath); os.IsNotExist(err) {
 			log.Printf("File does not exist: %s", rec.FilePath)
-			errors.Join(result, fmt.Errorf("File does not exist: %s\r\n", rec.FilePath))
+			errors.Join(result, fmt.Errorf("file does not exist: %s", rec.FilePath))
 		}
 		// check if file is not empty
 		if info, err := os.Stat(rec.FilePath); err == nil {
 			if info.Size() == 0 {
 				log.Printf("File is empty: %s", rec.FilePath)
-				errors.Join(result, fmt.Errorf("File is empty: %s\r\n", rec.FilePath))
+				errors.Join(result, fmt.Errorf("file is empty: %s", rec.FilePath))
 			}
 		}
 		// check if file size matches record.FileSize
 		if info, err := os.Stat(rec.FilePath); err == nil {
 			if info.Size() != int64(rec.FileSize) {
 				log.Printf("File size does not match: %s", rec.FilePath)
-				errors.Join(result, fmt.Errorf("File size does not match: %s\r\n", rec.FilePath))
+				errors.Join(result, fmt.Errorf("file size does not match: %s", rec.FilePath))
 			}
 		}
 		checked++
 	}
 	log.Printf("Checked files: %d", checked)
+	return
+}
+
+// freeUpSpace deletes downloaded files if there is less than cfg.Storage.KeepFreeSpace bytes free space
+func (r *Repository) freeUpSpace() (deleted int, result error) {
+	usage, err := disk.Usage(r.cfg.Storage.Repository)
+	if err != nil {
+		return 0, err
+	}
+	log.Printf("[DEBUG] Free space: %d b (%d GB)", usage.Free, usage.Free/1024/1024/1024)
+	log.Printf("[DEBUG] Keep free space: %d b", r.cfg.Storage.KeepFreeSpace)
+	if usage.Free > uint64(r.cfg.Storage.KeepFreeSpace) {
+		log.Printf("[INFO] Free space is %d b (%d GB), no need to free up space", usage.Free, usage.Free/1024/1024/1024)
+		return 0, nil
+	}
+
+	meetings, err := r.store.ListMeetings()
+	if err != nil {
+		return 0, err
+	}
+
+	for im := len(meetings) - 1; im >= 0; im-- {
+		usage, err := disk.Usage(r.cfg.Storage.Repository)
+		if err != nil {
+			return deleted, err
+		}
+		if usage.Free > uint64(r.cfg.Storage.KeepFreeSpace) {
+			break
+		}
+
+		recs, err := r.store.GetRecords(meetings[im].UUID)
+		if err != nil {
+			return deleted, err
+		}
+		for ir := 0; ir < len(recs); ir++ {
+			if recs[ir].Status == model.StatusDownloaded {
+				recFolder := r.cfg.Storage.Repository + "/" + recs[ir].Id
+				if err := os.RemoveAll(recFolder); err != nil {
+					log.Printf("[DEBUG] Failed to delete %s, %v", recFolder, err)
+					errors.Join(result, fmt.Errorf("failed to delete %s, %v; ", recFolder, err))
+				} else {
+					deleted++
+					log.Printf("[DEBUG] Deleted %s", recFolder)
+					r.store.UpdateRecord(recs[ir].Id, model.StatusDeleted, "")
+				}
+			}
+		}
+
+	}
 	return
 }

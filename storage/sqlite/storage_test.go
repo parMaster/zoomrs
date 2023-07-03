@@ -33,7 +33,7 @@ func Test_SqliteStorage(t *testing.T) {
 			StartTime:     timeNow,
 			FileExtension: "M4A",
 			FileSize:      1000000000,
-			Status:        model.Queued,
+			Status:        model.StatusQueued,
 			DownloadURL:   "testDownUrl",
 			PlayURL:       "testPlayUrl",
 			FilePath:      "testFilePath",
@@ -45,7 +45,7 @@ func Test_SqliteStorage(t *testing.T) {
 			StartTime:     timeNow,
 			FileExtension: "M4A",
 			FileSize:      2000000000,
-			Status:        model.Downloading,
+			Status:        model.StatusDownloading,
 			DownloadURL:   "testDownUrl",
 			PlayURL:       "testPlayUrl",
 			FilePath:      "testFilePath",
@@ -57,7 +57,7 @@ func Test_SqliteStorage(t *testing.T) {
 			StartTime:     timeNow,
 			FileExtension: "M4A",
 			FileSize:      3000000000,
-			Status:        model.Queued,
+			Status:        model.StatusQueued,
 			DownloadURL:   "testDownUrl",
 			PlayURL:       "testPlayUrl",
 			FilePath:      "testFilePath",
@@ -109,9 +109,9 @@ func Test_SqliteStorage(t *testing.T) {
 	assert.Equal(t, testRecords[0].FileSize, q3.FileSize)
 
 	// Update record status
-	err = store.UpdateRecord("Id1", model.Downloading, "testPath")
+	err = store.UpdateRecord("Id1", model.StatusDownloading, "testPath")
 	assert.NoError(t, err)
-	err = store.UpdateRecord("Id3", model.Failed, "testPath")
+	err = store.UpdateRecord("Id3", model.StatusFailed, "testPath")
 	assert.NoError(t, err)
 
 	// Get queued records - no rows
@@ -126,9 +126,9 @@ func Test_SqliteStorage(t *testing.T) {
 	records, err = store.GetRecords(testMeeting.UUID)
 	assert.NoError(t, err)
 	assert.Equal(t, len(testRecords), len(records))
-	assert.Equal(t, model.Queued, records[0].Status)
-	assert.Equal(t, model.Queued, records[1].Status)
-	assert.Equal(t, model.Queued, records[2].Status)
+	assert.Equal(t, model.StatusQueued, records[0].Status)
+	assert.Equal(t, model.StatusQueued, records[1].Status)
+	assert.Equal(t, model.StatusQueued, records[2].Status)
 
 	// List meetings
 	meetings, err := store.ListMeetings()

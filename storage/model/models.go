@@ -9,10 +9,11 @@ import (
 type RecordStatus string
 
 const (
-	Queued      RecordStatus = "queued"
-	Downloading RecordStatus = "downloading"
-	Downloaded  RecordStatus = "downloaded"
-	Failed      RecordStatus = "failed"
+	StatusQueued      RecordStatus = "queued"
+	StatusDownloading RecordStatus = "downloading"
+	StatusDownloaded  RecordStatus = "downloaded"
+	StatusFailed      RecordStatus = "failed"
+	StatusDeleted     RecordStatus = "deleted"
 )
 
 // RecordType describes the cloud recording types

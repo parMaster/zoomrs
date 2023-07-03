@@ -66,7 +66,7 @@ func (s *Server) Run() {
 		log.Fatalf("[ERROR] failed to init storage: %e", err)
 	}
 
-	s.repo = repo.NewRepository(s.store, s.client, *s.cfg)
+	s.repo = repo.NewRepository(s.store, s.client, s.cfg)
 
 	go s.startServer(s.ctx)
 	go s.repo.SyncJob(s.ctx)

@@ -106,9 +106,9 @@ func (s *Server) statusHandler(rw http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_, qok := stats[model.Queued]
-	_, fok := stats[model.Failed]
-	_, dok := stats[model.Downloading]
+	_, qok := stats[model.StatusQueued]
+	_, fok := stats[model.StatusFailed]
+	_, dok := stats[model.StatusDownloading]
 
 	var status string
 	if qok || dok {
@@ -216,7 +216,7 @@ func (s *Server) watchMeetingHandler(rw http.ResponseWriter, r *http.Request) {
 func (s *Server) statsHandler(rw http.ResponseWriter, r *http.Request) {
 	div := chi.URLParam(r, "divider")
 
-	stats, _ := s.store.GetRecordsByStatus(model.Downloaded)
+	stats, _ := s.store.GetRecordsByStatus(model.StatusDownloaded)
 	if stats == nil {
 		rw.WriteHeader(http.StatusInternalServerError)
 		return
@@ -295,7 +295,7 @@ func (s *Server) meetingsLoadedHandler(rw http.ResponseWriter, r *http.Request) 
 		}
 		for _, rec := range recs {
 
-			if rec.Status != model.Downloaded {
+			if rec.Status != model.StatusDownloaded {
 				resp["result"] = "pending"
 				log.Printf("[DEBUG] Pending caused by status %s - %s", rec.Id, rec.Status)
 				json.NewEncoder(rw).Encode(resp)

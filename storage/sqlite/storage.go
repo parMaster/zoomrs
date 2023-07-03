@@ -84,7 +84,7 @@ func (s *SQLiteStorage) SaveMeeting(meeting model.Meeting) error {
 // SaveRecord saves a record to the database
 func (s *SQLiteStorage) saveRecord(record model.Record) error {
 	if record.Status == "" {
-		record.Status = model.Queued
+		record.Status = model.StatusQueued
 	}
 
 	// convert time to local
@@ -246,7 +246,7 @@ func (s *SQLiteStorage) ResetFailedRecords() error {
 func (s *SQLiteStorage) GetQueuedRecord() (*model.Record, error) {
 	q := "SELECT * FROM `records` WHERE status = $1 ORDER BY startTime, id LIMIT 1"
 
-	row := s.DB.QueryRowContext(s.ctx, q, model.Queued)
+	row := s.DB.QueryRowContext(s.ctx, q, model.StatusQueued)
 	record := model.Record{}
 	err := row.Scan(
 		&record.Id,
