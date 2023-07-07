@@ -144,6 +144,48 @@ func (z *ZoomClient) GetMeetings(daysAgo int) ([]model.Meeting, error) {
 	return meetings, nil
 }
 
+// GetCloudStorageReport - get cloud storage usage
+// https://developers.zoom.us/docs/api/rest/reference/zoom-api/methods/#operation/reportCloudRecording
+// GET /report/cloud_recording
+// - from string - start date in format yyyy-mm-dd
+// - to string - end date in format yyyy-mm-dd
+func (z *ZoomClient) GetCloudStorageReport(from, to string) (*model.CloudRecordingReport, error) {
+	_, err := z.GetToken()
+	if err != nil {
+		return nil, errors.Join(fmt.Errorf("unable to get token"), err)
+	}
+
+	params := url.Values{}
+	params.Add(`from`, from)
+	params.Add(`to`, to)
+	log.Printf("[DEBUG] initial params = %s", params.Encode())
+	req, err := http.NewRequest(http.MethodGet, "https://api.zoom.us/v2/report/cloud_recording?"+params.Encode(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add(`Authorization`, fmt.Sprintf("Bearer %s", z.token.AccessToken))
+	req.Header.Add(`Host`, "zoom.us")
+	req.Header.Add(`Content-Type`, "application/json")
+
+	res, err := z.client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer res.Body.Close()
+
+	if res.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("unable to get cloud storage, status %d, message: %s", res.StatusCode, res.Body)
+	}
+
+	report := &model.CloudRecordingReport{}
+	if err := json.NewDecoder(res.Body).Decode(report); err != nil {
+		return nil, err
+	}
+
+	return report, nil
+}
+
 // DeleteMeetingRecordings - delete all recordings for a meeting
 // https://developers.zoom.us/docs/api/rest/reference/zoom-api/methods/#operation/recordingDelete
 // DELETE /meetings/{meetingId}/recordings

@@ -1,7 +1,10 @@
 package client
 
 import (
+	"log"
+	"os"
 	"testing"
+	"time"
 
 	"github.com/parMaster/zoomrs/config"
 
@@ -10,7 +13,13 @@ import (
 
 func Test_ZoomClient(t *testing.T) {
 
-	cfg, err := config.NewConfig("../config/config_example.yml")
+	cfgPath := "../config/config_cli.yml"
+
+	if _, err := os.Stat(cfgPath); os.IsNotExist(err) {
+		t.Skip("Config file does not exist: " + cfgPath)
+	}
+
+	cfg, err := config.NewConfig(cfgPath)
 	assert.NoError(t, err)
 
 	if cfg.Client.Id == "secret" || cfg.Client.Secret == "secret" {
@@ -26,6 +35,16 @@ func Test_ZoomClient(t *testing.T) {
 	meetings, err := c.GetMeetings(1)
 	assert.NoError(t, err)
 	assert.NotNil(t, meetings)
+
+	// Get cloud storage
+	// from the day before yesterday to yesterday
+	from := time.Now().AddDate(0, 0, -2).Format("2006-01-02")
+	to := time.Now().Format("2006-01-02")
+
+	storageReport, err := c.GetCloudStorageReport(from, to)
+	assert.NoError(t, err)
+	assert.NotNil(t, storageReport)
+	log.Printf("[DEBUG] Storage report: %+v", storageReport)
 
 	// Get token race condition
 	go func() {
@@ -45,5 +64,5 @@ func Test_ZoomClient(t *testing.T) {
 	token, err = c.GetToken()
 	assert.Error(t, err)
 	assert.Nil(t, token)
-	t.Logf("Error: %v", err)
+	// t.Logf("Error: %v", err)
 }

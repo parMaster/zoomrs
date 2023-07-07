@@ -79,6 +79,21 @@ type RecordInfo struct {
 	FilePath  string       `json:"file_path"` // local file path
 }
 
+// CloudRecordingReport describes the cloud recording report
+type CloudRecordingReport struct {
+	From                  string                  `json:"from"`
+	To                    string                  `json:"to"`
+	CloudRecordingStorage []CloudRecordingStorage `json:"cloud_recording_storage"`
+}
+
+// CloudRecordingStorage describes the cloud recording storage
+type CloudRecordingStorage struct {
+	Date      string `json:"date"`
+	FreeUsage string `json:"free_usage"`
+	PlanUsage string `json:"plan_usage"`
+	Usage     string `json:"usage"`
+}
+
 // FileSize describes the file size
 type FileSize int64
 
