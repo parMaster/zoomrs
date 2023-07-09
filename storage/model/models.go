@@ -88,10 +88,11 @@ type CloudRecordingReport struct {
 
 // CloudRecordingStorage describes the cloud recording storage
 type CloudRecordingStorage struct {
-	Date      string `json:"date"`
-	FreeUsage string `json:"free_usage"`
-	PlanUsage string `json:"plan_usage"`
-	Usage     string `json:"usage"`
+	Date         string `json:"date"`
+	FreeUsage    string `json:"free_usage"`              // ex: "free_usage":"495 GB"
+	PlanUsage    string `json:"plan_usage"`              // ex: "plan_usage":"0"
+	Usage        string `json:"usage"`                   // ex: "usage":"94.72 GB"
+	UsagePercent int    `json:"usage_percent,omitempty"` // ex: "usage_rate":"19"
 }
 
 // FileSize describes the file size

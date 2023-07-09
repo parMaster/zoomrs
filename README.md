@@ -18,6 +18,25 @@ Save thousands of dollars on Zoom Cloud Recording Storage! Download records auto
 ## Installation
 Zoomrs can be installed as a systemd service, run in foreground mode or in the docker container.
 
+## Prerequisites
+### Zoom API credentials
+Zoom API credentials are required to download recordings. You can get them at https://marketplace.zoom.us/develop/create. You need to create JWT app and copy API key and secret to the configuration file.
+
+Add the following scopes to the App:
+
+- `/recording:master`
+- `/recording:read:admin`
+- `/recording:write:admin`
+- `/report:read:admin`
+
+### Google OAuth credentials
+Google OAuth credentials are required to authenticate users. You can get them at https://console.cloud.google.com/apis/credentials. You need to create OAuth client ID and copy client ID and secret to the configuration file. Mind authorized redirect URIs - local domains are not allowed, so you need to use a public domain name or IP address.
+
+### Google OAuth authorized users
+You need to specify the list of users that are allowed to access the web frontend. Their email addresses should be specified in the configuration file.
+
+
+
 ## Configuration
 See `config/config_example.yaml` for example configuration file, available options and their descriptions. Copy it to `config/config.yaml` and edit it to your liking.
 
@@ -52,7 +71,7 @@ Log files are located at `/var/log/zoomrs.log` and `/var/log/zoomrs.err` by defa
 3. Check configuration parameters in Dockerfile and docker-compose.yml
 4. Build and run container
 
-		docker-compose up -d
+		docker compose up -d
 
 ## Usage
 ### Web frontend
@@ -71,17 +90,24 @@ Displays the page with the meeting title and player to watch the recording. Simp
 ### API
 
 #### GET `/status`
-Returns the status of the service. If the service is running, returns `200 OK` and the following JSON. Example response:
+Returns the status of the service and Zoom cloud storage usage stats. If the service is running, returns `200 OK` and the following JSON. Example response:
 ```json
 {
-	"stats":{
-		"downloaded":{
-			"count":5278,
-			"size_gb":1762,
-			"size_mb":1804660
-		}
-	},
-	"status":"OK"
+  "stats": {
+    "downloaded": {
+      "count": 6529,
+      "size_gb": 2148,
+      "size_mb": 2200412
+    },
+    "storage": {
+      "date": "2023-07-08",
+      "free_usage": "495 GB",
+      "plan_usage": "0",
+      "usage": "94.72 GB",
+      "usage_percent": 19
+    }
+  },
+  "status": "OK"
 }
 ```
 status can be:

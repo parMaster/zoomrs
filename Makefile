@@ -35,6 +35,12 @@ dbg:
 status:
 	sudo systemctl status zoomrs.service
 
+stop:
+	sudo systemctl stop zoomrs.service
+
+start:
+	sudo systemctl start zoomrs.service
+
 deploy:
 	make build
 	sudo systemctl stop zoomrs.service || true
@@ -49,4 +55,4 @@ deploy:
 	sudo systemctl enable zoomrs.service
 	sudo systemctl start zoomrs.service
 
-.PHONY: build buildsvc dbg test run info status deploy
+.PHONY: build buildsvc dbg test run info status deploy start stop

@@ -8,7 +8,9 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-pkgz/auth/token"
@@ -117,6 +119,27 @@ func (s *Server) statusHandler(rw http.ResponseWriter, r *http.Request) {
 		status = "FAILED"
 	} else {
 		status = "OK"
+	}
+
+	storageReport, err := s.client.GetCloudStorageReport(time.Now().AddDate(0, 0, -2).Format("2006-01-02"), time.Now().Format("2006-01-02"))
+	if err != nil {
+		log.Printf("[ERROR] failed to get cloud storage report, %v", err)
+		rw.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	if storageReport != nil && storageReport.CloudRecordingStorage != nil {
+
+		st := storageReport.CloudRecordingStorage[1]
+
+		// remove " GB" suffix from FreeUsage, PlanUsage and Usage fields to convert them to float
+		freeUsage, _ := strconv.ParseFloat(strings.TrimSuffix(st.FreeUsage, " GB"), 64)
+		planUsage, _ := strconv.ParseFloat(strings.TrimSuffix(st.PlanUsage, " GB"), 64)
+		usage, _ := strconv.ParseFloat(strings.TrimSuffix(st.Usage, " GB"), 64)
+		// calculate usage percent
+		st.UsagePercent = int((usage / (freeUsage + planUsage)) * 100)
+
+		stats["storage"] = st
 	}
 
 	resp := map[string]interface{}{
