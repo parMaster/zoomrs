@@ -123,9 +123,9 @@ status can be:
 
 `stats` section contains number of recordings and their total size in GB and MB grouped by status
 
-`cloud` section contains Zoom cloud storage usage stats. `free_usage` is the amount of free storage in GB, `plan_usage` is the amount of storage available for in the current plan in GB, `usage` is the amount of storage used by recordings in GB, `usage_percent` is the percentage of used storage.
+`cloud` section contains Zoom cloud storage usage stats. `free_usage` is the amount of free storage, `plan_usage` is the amount of storage available for the current plan, `usage` is the amount of storage used by recordings, `usage_percent` is the percentage of used storage.
 
-`storage` section contains the stats of the local storage. `free` is the amount of free storage in GB, `total` is the total amount of storage in GB, `usage_percent` is the percentage of used storage, `used` is the amount of used storage in GB.
+`storage` section contains the stats of the local storage. `free` is the amount of free storage, `total` is the total amount of storage, `usage_percent` is the percentage of used storage, `used` is the amount of used storage.
 
 This API is useful for monitoring the service status and triggering alerts when something goes wrong.
 
