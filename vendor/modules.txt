@@ -78,6 +78,9 @@ github.com/montanaflynn/stats
 # github.com/nullrocks/identicon v0.0.0-20180626043057-7875f45b0022
 ## explicit
 github.com/nullrocks/identicon
+# github.com/parMaster/mcache v0.0.0-20230710114841-c593a5c0a1cc
+## explicit; go 1.20
+github.com/parMaster/mcache
 # github.com/pkg/errors v0.9.1
 ## explicit
 github.com/pkg/errors

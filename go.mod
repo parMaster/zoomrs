@@ -9,6 +9,7 @@ require (
 	github.com/go-pkgz/lgr v0.11.0
 	github.com/go-pkgz/rest v1.17.0
 	github.com/mattn/go-sqlite3 v1.14.16
+	github.com/parMaster/mcache v0.0.0-20230710114841-c593a5c0a1cc
 	github.com/shirou/gopsutil/v3 v3.23.5
 	github.com/stretchr/testify v1.8.4
 	github.com/umputun/go-flags v1.5.1

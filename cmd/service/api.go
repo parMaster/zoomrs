@@ -122,11 +122,21 @@ func (s *Server) statusHandler(rw http.ResponseWriter, r *http.Request) {
 		status = "OK"
 	}
 
-	cloudStorageReport, err := s.client.GetCloudStorageReport(time.Now().AddDate(0, 0, -2).Format("2006-01-02"), time.Now().Format("2006-01-02"))
+	var cloudStorageReport *model.CloudRecordingReport
+	cachedCloud, err := s.cache.Get("cloudStorageReport")
 	if err != nil {
-		log.Printf("[ERROR] failed to get cloud storage report, %v", err)
-		rw.WriteHeader(http.StatusInternalServerError)
-		return
+		log.Printf("[DEBUG] miss")
+
+		cloudStorageReport, err = s.client.GetCloudStorageReport(time.Now().AddDate(0, 0, -2).Format("2006-01-02"), time.Now().Format("2006-01-02"))
+		if err != nil {
+			log.Printf("[ERROR] failed to get cloud storage report, %v", err)
+			rw.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		s.cache.Set("cloudStorageReport", cloudStorageReport, 60*60)
+	} else {
+		log.Printf("[DEBUG] hit")
+		cloudStorageReport = cachedCloud.(*model.CloudRecordingReport)
 	}
 
 	// cloud storage stats
