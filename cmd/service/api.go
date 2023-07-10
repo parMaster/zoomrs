@@ -18,6 +18,7 @@ import (
 	"github.com/parMaster/zoomrs/storage"
 	"github.com/parMaster/zoomrs/storage/model"
 	"github.com/parMaster/zoomrs/web"
+	"github.com/shirou/gopsutil/v3/disk"
 )
 
 func (s *Server) router() http.Handler {
@@ -121,30 +122,45 @@ func (s *Server) statusHandler(rw http.ResponseWriter, r *http.Request) {
 		status = "OK"
 	}
 
-	storageReport, err := s.client.GetCloudStorageReport(time.Now().AddDate(0, 0, -2).Format("2006-01-02"), time.Now().Format("2006-01-02"))
+	cloudStorageReport, err := s.client.GetCloudStorageReport(time.Now().AddDate(0, 0, -2).Format("2006-01-02"), time.Now().Format("2006-01-02"))
 	if err != nil {
 		log.Printf("[ERROR] failed to get cloud storage report, %v", err)
 		rw.WriteHeader(http.StatusInternalServerError)
 		return
 	}
 
-	if storageReport != nil && storageReport.CloudRecordingStorage != nil {
+	// cloud storage stats
+	var cloud model.CloudRecordingStorage
+	if cloudStorageReport != nil && cloudStorageReport.CloudRecordingStorage != nil {
 
-		st := storageReport.CloudRecordingStorage[1]
+		cloud = cloudStorageReport.CloudRecordingStorage[1]
 
 		// remove " GB" suffix from FreeUsage, PlanUsage and Usage fields to convert them to float
-		freeUsage, _ := strconv.ParseFloat(strings.TrimSuffix(st.FreeUsage, " GB"), 64)
-		planUsage, _ := strconv.ParseFloat(strings.TrimSuffix(st.PlanUsage, " GB"), 64)
-		usage, _ := strconv.ParseFloat(strings.TrimSuffix(st.Usage, " GB"), 64)
+		freeUsage, _ := strconv.ParseFloat(strings.TrimSuffix(cloud.FreeUsage, " GB"), 64)
+		planUsage, _ := strconv.ParseFloat(strings.TrimSuffix(cloud.PlanUsage, " GB"), 64)
+		usage, _ := strconv.ParseFloat(strings.TrimSuffix(cloud.Usage, " GB"), 64)
 		// calculate usage percent
-		st.UsagePercent = int((usage / (freeUsage + planUsage)) * 100)
+		cloud.UsagePercent = int((usage / (freeUsage + planUsage)) * 100)
+	}
 
-		stats["storage"] = st
+	// disk storage stats
+	diskStorageReport, err := disk.Usage(s.cfg.Storage.Repository)
+	if err != nil {
+		log.Printf("[ERROR] failed to get disk storage report, %v", err)
+		rw.WriteHeader(http.StatusInternalServerError)
+		return
 	}
 
 	resp := map[string]interface{}{
 		"status": status,
 		"stats":  stats,
+		"cloud":  cloud,
+		"storage": map[string]interface{}{
+			"total":         model.FileSize(diskStorageReport.Total),
+			"free":          model.FileSize(diskStorageReport.Free),
+			"used":          model.FileSize(diskStorageReport.Used),
+			"usage_percent": int(diskStorageReport.UsedPercent),
+		},
 	}
 
 	rw.Header().Set("Content-Type", "application/json")

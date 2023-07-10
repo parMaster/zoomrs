@@ -110,7 +110,7 @@ func (f FileSize) String() string {
 		div *= unit
 		exp++
 	}
-	return fmt.Sprintf("%.1f%cB",
+	return fmt.Sprintf("%.1f %cB",
 		float64(f)/float64(div), "kMGTPE"[exp])
 }
 

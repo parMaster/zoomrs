@@ -93,21 +93,27 @@ Displays the page with the meeting title and player to watch the recording. Simp
 Returns the status of the service and Zoom cloud storage usage stats. If the service is running, returns `200 OK` and the following JSON. Example response:
 ```json
 {
+  "cloud": {
+    "date": "2023-07-09",
+    "free_usage": "495 GB",
+    "plan_usage": "0",
+    "usage": "27.98 GB",
+    "usage_percent": 5
+  },
   "stats": {
     "downloaded": {
       "count": 6529,
       "size_gb": 2148,
       "size_mb": 2200412
-    },
-    "storage": {
-      "date": "2023-07-08",
-      "free_usage": "495 GB",
-      "plan_usage": "0",
-      "usage": "94.72 GB",
-      "usage_percent": 19
     }
   },
-  "status": "OK"
+  "status": "OK",
+  "storage": {
+    "free": "1.2 TB",
+    "total": "3.6 TB",
+    "usage_percent": 63,
+    "used": "2.2 TB"
+  }
 }
 ```
 status can be:
@@ -117,9 +123,13 @@ status can be:
 
 `stats` section contains number of recordings and their total size in GB and MB grouped by status
 
+`cloud` section contains Zoom cloud storage usage stats. `free_usage` is the amount of free storage in GB, `plan_usage` is the amount of storage available for in the current plan in GB, `usage` is the amount of storage used by recordings in GB, `usage_percent` is the percentage of used storage.
+
+`storage` section contains the stats of the local storage. `free` is the amount of free storage in GB, `total` is the total amount of storage in GB, `usage_percent` is the percentage of used storage, `used` is the amount of used storage in GB.
+
 This API is useful for monitoring the service status and triggering alerts when something goes wrong.
 
-Another example response, when there are recordings in `queued` and `downloading` status:
+Another example response, when there are recordings in `queued` and `downloading` status (only relevant fields are shown):
 ```json 
 {
   "stats": {
