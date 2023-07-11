@@ -143,7 +143,7 @@ func (s *Server) statusHandler(rw http.ResponseWriter, r *http.Request) {
 	var cloud model.CloudRecordingStorage
 	if cloudStorageReport != nil && cloudStorageReport.CloudRecordingStorage != nil {
 
-		cloud = cloudStorageReport.CloudRecordingStorage[1]
+		cloud = cloudStorageReport.CloudRecordingStorage[len(cloudStorageReport.CloudRecordingStorage)-1]
 
 		// remove " GB" suffix from FreeUsage, PlanUsage and Usage fields to convert them to float
 		freeUsage, _ := strconv.ParseFloat(strings.TrimSuffix(cloud.FreeUsage, " GB"), 64)
