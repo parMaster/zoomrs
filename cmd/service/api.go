@@ -122,6 +122,11 @@ func (s *Server) statusHandler(rw http.ResponseWriter, r *http.Request) {
 		status = "OK"
 	}
 
+	resp := map[string]interface{}{
+		"status": status,
+		"stats":  stats,
+	}
+
 	var cloudStorageReport *model.CloudRecordingReport
 	cachedCloud, err := s.cache.Get("cloudStorageReport")
 	if err != nil {
@@ -141,7 +146,7 @@ func (s *Server) statusHandler(rw http.ResponseWriter, r *http.Request) {
 
 	// cloud storage stats
 	var cloud model.CloudRecordingStorage
-	if cloudStorageReport != nil && cloudStorageReport.CloudRecordingStorage != nil {
+	if cloudStorageReport != nil && cloudStorageReport.CloudRecordingStorage != nil && len(cloudStorageReport.CloudRecordingStorage) > 0 {
 
 		cloud = cloudStorageReport.CloudRecordingStorage[len(cloudStorageReport.CloudRecordingStorage)-1]
 
@@ -151,6 +156,8 @@ func (s *Server) statusHandler(rw http.ResponseWriter, r *http.Request) {
 		usage, _ := strconv.ParseFloat(strings.TrimSuffix(cloud.Usage, " GB"), 64)
 		// calculate usage percent
 		cloud.UsagePercent = int((usage / (freeUsage + planUsage)) * 100)
+
+		resp["cloud"] = cloud
 	}
 
 	// disk storage stats
@@ -161,16 +168,11 @@ func (s *Server) statusHandler(rw http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	resp := map[string]interface{}{
-		"status": status,
-		"stats":  stats,
-		"cloud":  cloud,
-		"storage": map[string]interface{}{
-			"total":         model.FileSize(diskStorageReport.Total),
-			"free":          model.FileSize(diskStorageReport.Free),
-			"used":          model.FileSize(diskStorageReport.Used),
-			"usage_percent": int(diskStorageReport.UsedPercent),
-		},
+	resp["storage"] = map[string]interface{}{
+		"total":         model.FileSize(diskStorageReport.Total),
+		"free":          model.FileSize(diskStorageReport.Free),
+		"used":          model.FileSize(diskStorageReport.Used),
+		"usage_percent": int(diskStorageReport.UsedPercent),
 	}
 
 	rw.Header().Set("Content-Type", "application/json")
