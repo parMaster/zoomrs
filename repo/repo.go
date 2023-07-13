@@ -447,7 +447,7 @@ func (r *Repository) freeUpSpace() (deleted int, result error) {
 	log.Printf("[DEBUG] Free space: %d b (%d GB)", usage.Free, usage.Free/1024/1024/1024)
 	log.Printf("[DEBUG] Keep free space: %d b", r.cfg.Storage.KeepFreeSpace)
 	if usage.Free > uint64(r.cfg.Storage.KeepFreeSpace) {
-		log.Printf("[INFO] Free space is %d b (%d GB), no need to free up space", usage.Free, usage.Free/1024/1024/1024)
+		log.Printf("[DEBUG] Free space is %d b (%d GB), no need to free up space", usage.Free, usage.Free/1024/1024/1024)
 		return 0, nil
 	}
 
@@ -462,6 +462,7 @@ func (r *Repository) freeUpSpace() (deleted int, result error) {
 			return deleted, err
 		}
 		if usage.Free > uint64(r.cfg.Storage.KeepFreeSpace) {
+			log.Printf("[INFO] Free space is %d b (%d GB), deleted %d records", usage.Free, usage.Free/1024/1024/1024, deleted)
 			break
 		}
 
@@ -470,7 +471,7 @@ func (r *Repository) freeUpSpace() (deleted int, result error) {
 			return deleted, err
 		}
 		for ir := 0; ir < len(recs); ir++ {
-			if recs[ir].Status == model.StatusDownloaded {
+			if recs[ir].Status == model.StatusDownloaded && len(recs[ir].Id) > 0 {
 				recFolder := r.cfg.Storage.Repository + "/" + recs[ir].Id
 				if err := os.RemoveAll(recFolder); err != nil {
 					log.Printf("[DEBUG] Failed to delete %s, %v", recFolder, err)
