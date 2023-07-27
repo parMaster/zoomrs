@@ -60,7 +60,7 @@ func (s *Commander) Run(opts Options) {
 		}
 		repo.CleanupJob(s.ctx, opts.Trash)
 	default:
-		log.Printf("[INFO] command %s is not supported", opts.Cmd)
+		s.ShowUI()
 	}
 
 	log.Printf("[INFO] cli job done\n*********************************")
