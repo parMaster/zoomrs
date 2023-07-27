@@ -336,7 +336,6 @@ func (s *Server) meetingsLoadedHandler(rw http.ResponseWriter, r *http.Request) 
 
 	log.Printf("[DEBUG] Checking if uuids loaded: \r\n %+v", uuids.Meetings)
 	resp := map[string]interface{}{}
-
 	for _, uuid := range uuids.Meetings {
 		recs, err := s.store.GetRecords(uuid)
 		if err != nil {
@@ -344,6 +343,14 @@ func (s *Server) meetingsLoadedHandler(rw http.ResponseWriter, r *http.Request) 
 			rw.WriteHeader(http.StatusInternalServerError)
 			return
 		}
+		if len(recs) == 0 {
+			resp["result"] = "pending"
+			log.Printf("[DEBUG] Pending caused by no records for uuid: %s", uuid)
+			json.NewEncoder(rw).Encode(resp)
+			return
+		}
+
+		log.Printf("[DEBUG] Checking recs: \r\n %+v", recs)
 		for _, rec := range recs {
 
 			if rec.Status != model.StatusDownloaded {

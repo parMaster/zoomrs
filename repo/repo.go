@@ -321,6 +321,7 @@ func (r *Repository) CleanupJob(ctx context.Context, daysAgo int) {
 		}
 
 		loaded, err := r.requestMeetingsLoaded(uuids)
+
 		if err != nil {
 			log.Printf("[ERROR] meetingsLoaded returned error: %v", err)
 			select {
@@ -397,6 +398,7 @@ func (r *Repository) requestMeetingsLoaded(meetings []string) (loaded bool, err 
 		if err != nil {
 			return false, fmt.Errorf("failed to decode response body, %v", err)
 		}
+		log.Printf("[DEBUG] meetingsLoaded result: %v", result)
 		if result.Result != "ok" {
 			return false, nil
 		}
