@@ -41,13 +41,6 @@ func (s *Commander) Run(opts Options) {
 
 	repo := repo.NewRepository(s.store, s.client, s.cfg)
 
-	// Run cleanup job
-	// crontab line example: "00 10 * * * cd $HOME/go/src/zoomrs/dist && ./zoomrs-cli --dbg --trash 2 --config ../config/config_cli.yml >> /var/log/cron.log 2>&1"
-	if opts.Trash > 0 {
-		log.Printf("[INFO] starting cleanup job")
-		repo.CleanupJob(s.ctx, opts.Trash)
-	}
-
 	switch opts.Cmd {
 	case "check":
 		log.Printf("[INFO] starting CheckConsistency")
@@ -57,6 +50,15 @@ func (s *Commander) Run(opts Options) {
 		} else {
 			log.Printf("[INFO] CheckConsistency: OK, %d", checked)
 		}
+	case "trash":
+		log.Printf("[INFO] starting CleanupJob")
+		// Run cleanup job. crontab line example:
+		// 00 10 * * * cd $HOME/go/src/zoomrs/dist && ./zoomrs-cli --dbg --cmd trash --trash 2 --config ../config/config_cli.yml >> /var/log/cron.log 2>&1
+		if opts.Trash == -1 { // -1 is default value, so "0" value is allowed - it will delete today's meetings
+			log.Printf("[ERROR] CleanupJob: '--trash' option (days) is not set")
+			break
+		}
+		repo.CleanupJob(s.ctx, opts.Trash)
 	default:
 		log.Printf("[INFO] command %s is not supported", opts.Cmd)
 	}
@@ -85,7 +87,7 @@ func LoadStorage(ctx context.Context, cfg config.Storage, s *storage.Storer) err
 type Options struct {
 	Config string `long:"config" env:"CONFIG" default:"config/config_cli.yml" description:"yaml config file name"`
 	Dbg    bool   `long:"dbg" env:"DEBUG" description:"show debug info"`
-	Trash  int    `long:"trash" description:"trash old meetings after N days"`
+	Trash  int    `long:"trash" description:"trash old meetings after N days" default:"-1"`
 	Cmd    string `long:"cmd" description:"run command"`
 }
 

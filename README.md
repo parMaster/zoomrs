@@ -215,11 +215,11 @@ Run it like this:
 	```
 - `trash` - trashes recordings from Zoom Cloud. Run it like this:
 
-		./zoomrs-cli --dbg --trash 2
+		./zoomrs-cli --dbg --cmd trash --trash 2
 
 	where `2` is 2 days before today, so all the recordings from the bay before yesterday will be trashed. This is designed this way to run it as a cron job every day. Cron job line example:
 
-		00 10 * * * cd $HOME/go/src/zoomrs/dist && ./zoomrs-cli --trash 2 --config ../config/config_cli.yml >> /var/log/cron.log 2>&1
+		00 10 * * * cd $HOME/go/src/zoomrs/dist && ./zoomrs-cli --dbg --cmd trash --trash 2 --config ../config/config_cli.yml >> /var/log/cron.log 2>&1
 
 	will trash all recordings from the day before yesterday every day at 10:00 AM. `--config` option is used to specify the path to the configuration file. `--dbg` option can be used to enable debug logging. Logs are written to stdout, and redirected to `/var/log/cron.log` in the example above.
 
