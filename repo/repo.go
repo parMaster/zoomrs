@@ -38,7 +38,7 @@ type Repository struct {
 	store    storage.Storer
 	client   Client
 	cfg      *config.Parameters
-	syncable syncable
+	Syncable syncable
 }
 
 func NewRepository(store storage.Storer, client Client, cfg *config.Parameters) *Repository {
@@ -58,12 +58,12 @@ func NewRepository(store storage.Storer, client Client, cfg *config.Parameters) 
 		sync.Optional[model.RecordType(t)] = true
 	}
 
-	return &Repository{store: store, client: client, cfg: cfg, syncable: sync}
+	return &Repository{store: store, client: client, cfg: cfg, Syncable: sync}
 }
 
 func (r *Repository) SyncJob(ctx context.Context) {
 
-	if len(r.syncable.Important)+len(r.syncable.Alternative)+len(r.syncable.Optional) == 0 {
+	if len(r.Syncable.Important)+len(r.Syncable.Alternative)+len(r.Syncable.Optional) == 0 {
 		log.Printf("[DEBUG] No sync types configured. Sync job will not run")
 		return
 	}
@@ -120,13 +120,13 @@ func (r *Repository) SyncMeetings(meetings *[]model.Meeting) error {
 				// and sort them by importance
 				var important, alternative, optional []model.Record
 				for _, record := range meeting.Records {
-					if _, ok := r.syncable.Important[record.Type]; ok {
+					if _, ok := r.Syncable.Important[record.Type]; ok {
 						important = append(important, record)
 					}
-					if _, ok := r.syncable.Alternative[record.Type]; ok {
+					if _, ok := r.Syncable.Alternative[record.Type]; ok {
 						alternative = append(alternative, record)
 					}
-					if _, ok := r.syncable.Optional[record.Type]; ok {
+					if _, ok := r.Syncable.Optional[record.Type]; ok {
 						optional = append(optional, record)
 					}
 				}

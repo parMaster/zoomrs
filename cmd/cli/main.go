@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/go-pkgz/lgr"
 	"github.com/parMaster/zoomrs/client"
@@ -59,6 +60,30 @@ func (s *Commander) Run(opts Options) {
 			break
 		}
 		repo.CleanupJob(s.ctx, opts.Trash)
+	case "sync":
+		log.Printf("[INFO] starting SyncJob")
+
+		if len(repo.Syncable.Important)+len(repo.Syncable.Alternative)+len(repo.Syncable.Optional) == 0 {
+			log.Printf("[DEBUG] No sync types configured. Sync job will not run")
+			return
+		}
+		for {
+			meetings, err := s.client.GetMeetings(opts.Days)
+			if err != nil {
+				log.Printf("[ERROR] failed to get meetings, %v, retrying in 30 sec", err)
+				time.Sleep(30 * time.Second)
+				continue
+			}
+			log.Printf("[DEBUG] Syncing meetings - %d in feed", len(meetings))
+
+			err = repo.SyncMeetings(&meetings)
+			if err != nil {
+				log.Printf("[ERROR] failed to sync meetings, %v, retrying in 30 sec", err)
+				time.Sleep(30 * time.Second)
+				continue
+			}
+			break
+		}
 	default:
 		s.ShowUI()
 	}
@@ -86,6 +111,7 @@ func LoadStorage(ctx context.Context, cfg config.Storage, s *storage.Storer) err
 
 type Options struct {
 	Config string `long:"config" env:"CONFIG" default:"config/config_cli.yml" description:"yaml config file name"`
+	Days   int    `long:"days" env:"DEBUG" description:"(today - 'days') day to sync. Default is 1 (yesterday)" default:"1"`
 	Dbg    bool   `long:"dbg" env:"DEBUG" description:"show debug info"`
 	Trash  int    `long:"trash" description:"trash old meetings after N days" default:"-1"`
 	Cmd    string `long:"cmd" description:"run command"`
