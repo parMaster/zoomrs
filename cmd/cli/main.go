@@ -40,12 +40,12 @@ func (s *Commander) Run(opts Options) {
 		log.Fatalf("[ERROR] failed to init storage: %e", err)
 	}
 
-	repo := repo.NewRepository(s.store, s.client, s.cfg)
+	r := repo.NewRepository(s.store, s.client, s.cfg)
 
 	switch opts.Cmd {
 	case "check":
 		log.Printf("[INFO] starting CheckConsistency")
-		checked, err := repo.CheckConsistency()
+		checked, err := r.CheckConsistency()
 		if err != nil {
 			log.Printf("[ERROR] CheckConsistency: %d, %e", checked, err)
 		} else {
@@ -59,15 +59,21 @@ func (s *Commander) Run(opts Options) {
 			log.Printf("[ERROR] CleanupJob: '--trash' option (days) is not set")
 			break
 		}
-		repo.CleanupJob(s.ctx, opts.Trash)
+		r.CleanupJob(s.ctx, opts.Trash)
 	case "sync":
 		log.Printf("[INFO] starting SyncJob")
 
-		if len(repo.Syncable.Important)+len(repo.Syncable.Alternative)+len(repo.Syncable.Optional) == 0 {
+		if len(r.Syncable.Important)+len(r.Syncable.Alternative)+len(r.Syncable.Optional) == 0 {
 			log.Printf("[DEBUG] No sync types configured. Sync job will not run")
 			return
 		}
 		for {
+			select {
+			case <-s.ctx.Done():
+				return
+			default:
+			}
+
 			meetings, err := s.client.GetMeetings(opts.Days)
 			if err != nil {
 				log.Printf("[ERROR] failed to get meetings, %v, retrying in 30 sec", err)
@@ -76,13 +82,37 @@ func (s *Commander) Run(opts Options) {
 			}
 			log.Printf("[DEBUG] Syncing meetings - %d in feed", len(meetings))
 
-			err = repo.SyncMeetings(&meetings)
+			err = r.SyncMeetings(&meetings)
 			if err != nil {
 				log.Printf("[ERROR] failed to sync meetings, %v, retrying in 30 sec", err)
 				time.Sleep(30 * time.Second)
 				continue
 			}
 			break
+		}
+
+		var lastError error
+		for {
+			select {
+			case <-s.ctx.Done():
+				return
+			default:
+			}
+			err = r.DownloadOnce()
+			if err == repo.ErrNoQueuedRecords {
+				if err == lastError {
+					log.Printf("[DEBUG] no queued records, exiting")
+					break
+				}
+				lastError = err
+				continue
+			}
+			if err != nil {
+				log.Printf("[ERROR] failed to download meetings, %v, retrying in 30 sec", err)
+				lastError = err
+				time.Sleep(30 * time.Second)
+				continue
+			}
 		}
 	default:
 		s.ShowUI()

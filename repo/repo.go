@@ -21,6 +21,10 @@ import (
 	"github.com/parMaster/zoomrs/storage/model"
 )
 
+var (
+	ErrNoQueuedRecords = errors.New("no records queued to download")
+)
+
 type Client interface {
 	Authorize() error
 	GetMeetings(daysAgo int) ([]model.Meeting, error)
@@ -183,44 +187,56 @@ func (r *Repository) DownloadJob(ctx context.Context) {
 		case <-ticker.C:
 		}
 
-		var queued *model.Record
-		var err error
-		queued, err = r.store.GetQueuedRecord()
+		err := r.DownloadOnce()
 		if err != nil {
-			if err == storage.ErrNoRows {
-				log.Printf("[DEBUG] No queued records")
-				// retry 'failed' records and 'downloading' records - put them back to 'queued'
-				err := r.store.ResetFailedRecords()
-				if err != nil {
-					log.Printf("[ERROR] failed to reset failed records, %v", err)
-					continue
-				}
-				ticker.Reset(1 * time.Minute)
-				continue
-			}
-			log.Printf("[ERROR] failed to get queued records, %v", err)
+			log.Printf("[ERROR] %v", err)
+		}
+		if err == ErrNoQueuedRecords {
+			ticker.Reset(1 * time.Minute)
 			continue
 		}
+		ticker.Reset(1 * time.Second)
+	}
+}
 
-		// download the record
-		if queued != nil {
-			log.Printf("[DEBUG] ↓ %d MB | %s record %s meetingId %s", queued.FileSize/1024/1024, queued.Type, queued.Id, queued.MeetingId)
-			log.Printf("[INFO] ↓ %d MB | %s", queued.FileSize/1024/1024, queued.Id)
-			downErr := r.DownloadRecord(queued)
-			if downErr != nil {
-				log.Printf("[ERROR] download returned error: %s - %v", queued.Id, downErr)
-				continue
-			}
-			ticker.Reset(1 * time.Second)
-			if downErr == nil && r.meetingRecordsLoaded(queued.MeetingId) && (r.cfg.Client.DeleteDownloaded || r.cfg.Client.TrashDownloaded) {
-				err := r.client.DeleteMeetingRecordings(queued.MeetingId, r.cfg.Client.DeleteDownloaded)
-				if err != nil {
-					log.Printf("[ERROR] failed to delete meeting %s - %v", queued.MeetingId, err)
-					continue
-				}
+// DownloadOnce runs download job once
+func (r *Repository) DownloadOnce() error {
+	queued, err := r.store.GetQueuedRecord()
+	if err == storage.ErrNoRows {
+		log.Printf("[DEBUG] No queued records")
+		// retry 'failed' records and 'downloading' records - put them back to 'queued'
+		err := r.store.ResetFailedRecords()
+		if err != nil {
+			return errors.Join(fmt.Errorf("failed to reset failed records"), err)
+		}
+		return ErrNoQueuedRecords
+	}
+	if err != nil {
+		return errors.Join(fmt.Errorf("failed to get queued records"), err)
+	}
+
+	queued, err = r.store.GetQueuedRecord()
+	if err != nil {
+		return errors.Join(fmt.Errorf("failed to get queued records"), err)
+	}
+
+	// download the record
+	if queued != nil {
+		log.Printf("[DEBUG] ↓ %d MB | %s record %s meetingId %s", queued.FileSize/1024/1024, queued.Type, queued.Id, queued.MeetingId)
+		log.Printf("[INFO] ↓ %d MB | %s", queued.FileSize/1024/1024, queued.Id)
+		downErr := r.DownloadRecord(queued)
+		if downErr != nil {
+			return errors.Join(fmt.Errorf("download returned error %s", queued.Id), downErr)
+		}
+
+		if downErr == nil && r.meetingRecordsLoaded(queued.MeetingId) && (r.cfg.Client.DeleteDownloaded || r.cfg.Client.TrashDownloaded) {
+			err := r.client.DeleteMeetingRecordings(queued.MeetingId, r.cfg.Client.DeleteDownloaded)
+			if err != nil {
+				return errors.Join(fmt.Errorf("failed to delete meeting %s", queued.MeetingId), err)
 			}
 		}
 	}
+	return nil
 }
 
 // DownloadRecord downloads the record from Zoom
