@@ -37,6 +37,8 @@ type Server struct {
 	OAuthDisableXSRF  bool     `yaml:"oauth_disable_xsrf"`  // OAuth disable XSRF setting
 	JWTSecret         string   `yaml:"jwt_secret"`          // JWT secret
 	Managers          []string `yaml:"managers"`            // List of managers emails
+	SyncJob           bool     `yaml:"sync_job"`            // Run sync job
+	DownloadJob       bool     `yaml:"download_job"`        // Run download job
 }
 
 type Storage struct {

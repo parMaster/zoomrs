@@ -188,12 +188,12 @@ func (r *Repository) DownloadJob(ctx context.Context) {
 		}
 
 		err := r.DownloadOnce()
-		if err != nil {
-			log.Printf("[ERROR] %v", err)
-		}
 		if err == ErrNoQueuedRecords {
 			ticker.Reset(1 * time.Minute)
 			continue
+		}
+		if err != nil {
+			log.Printf("[ERROR] %v", err)
 		}
 		ticker.Reset(1 * time.Second)
 	}

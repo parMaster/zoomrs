@@ -74,8 +74,12 @@ func (s *Server) Run() {
 	s.repo = repo.NewRepository(s.store, s.client, s.cfg)
 
 	go s.startServer(s.ctx)
-	go s.repo.SyncJob(s.ctx)
-	go s.repo.DownloadJob(s.ctx)
+	if s.cfg.Server.SyncJob {
+		go s.repo.SyncJob(s.ctx)
+	}
+	if s.cfg.Server.DownloadJob {
+		go s.repo.DownloadJob(s.ctx)
+	}
 
 	<-s.ctx.Done()
 }

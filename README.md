@@ -229,11 +229,19 @@ Run it like this:
 
 	`--days` parameter used with the value of `1` to sync all the yesterday recordings (1 day before today). This is designed this way to run it as a cron job. Cron job line example:
 
-		00 3 * * * cd $HOME/go/src/zoomrs/dist && ./zoomrs-cli --cmd sync --days 2 --config ../config/config_cli.yml >> /var/log/cron.log 2>&1
+		00 3 * * * cd $HOME/go/src/zoomrs/dist && ./zoomrs-cli --cmd sync --days 1 --config ../config/config_cli.yml >> /var/log/cron.log 2>&1
 
 	will sync all recordings from the yesterday every day at 3:00 AM. `--config` option is used to specify the path to the configuration file. `--dbg` option can be used to enable debug logging. Logs are written to stdout, and redirected to `/var/log/cron.log` in the example above.
 
 _* Note that CLI tool uses different configuration file then the server with different Zoom API credentials to avoid spoiling services's auth token when running CLI. Also, running multi-server setup you want to sync recordings only after all servers have downloaded them, so you need to run CLI tool on one of the servers, allow syncing records in CLI config and deny it in servers configs._
+
+## Running multiple instances
+You can run multiple instances of the service to increase reliability, duplicate downloaded data for redundancy. Each instance should have its own configuration file and its own database file. Each instance should have its own Zoom API credentials. Consider following setup as an example:
+1. One main instance that downloads recordings and hosts web frontend (see `config/config_example.yml` for example configuration file). Enable sync and download for this instance: `server.sync_job: true` and `server.download_job: true` in the configuration file, set oauth credentials and authorized users.
+2. One or many secondary instances that only download recordings but don't host web frontend. Two options are available here: 
+	- Run the service in foreground mode with `server.sync_job: true` and `server.download_job: true` in the configuration file. This way download job will run somewhere from 00:00 to 01:00 am
+	- Run downloader with cron job (see crontab line example in the previous section). This way you can set the time to run the download job
+3. Run cleanup job on one of the instances (see crontab line example in the previous section). Use configuration file that enumerates all the instances in `server.instances` section. This way cleanup job will check all the instances for consistency and delete recordings from Zoom Cloud only if all the instances have downloaded them.
 
 ### Database backup
 Backup database file regularly to prevent data loss. See example shell script at `dist/backup_db.sh`. It can be run as a cron job like this:
