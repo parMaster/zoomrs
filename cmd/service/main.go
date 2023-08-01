@@ -64,7 +64,6 @@ func LoadStorage(ctx context.Context, cfg config.Storage, s *storage.Storer) err
 }
 
 func (s *Server) Run() {
-	log.Printf("[INFO] starting server at %s", s.cfg.Server.Listen)
 
 	err := LoadStorage(s.ctx, s.cfg.Storage, &s.store)
 	if err != nil {
@@ -73,11 +72,15 @@ func (s *Server) Run() {
 
 	s.repo = repo.NewRepository(s.store, s.client, s.cfg)
 
+	log.Printf("[INFO] starting server at %s", s.cfg.Server.Listen)
 	go s.startServer(s.ctx)
+
 	if s.cfg.Server.SyncJob {
+		log.Printf("[INFO] starting sync job")
 		go s.repo.SyncJob(s.ctx)
 	}
 	if s.cfg.Server.DownloadJob {
+		log.Printf("[INFO] starting download job")
 		go s.repo.DownloadJob(s.ctx)
 	}
 
