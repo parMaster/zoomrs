@@ -98,8 +98,8 @@ func (s *Server) startServer(ctx context.Context) {
 	<-ctx.Done()
 	log.Printf("[INFO] Terminating http server")
 
-	if err := httpServer.Close(); err != nil {
-		log.Printf("[ERROR] failed to close http server, %v", err)
+	if err := httpServer.Shutdown(ctx); err != nil {
+		log.Printf("[ERROR] shutdown http server: %v", err)
 	}
 }
 
