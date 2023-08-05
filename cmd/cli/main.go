@@ -194,7 +194,7 @@ func main() {
 
 		// catch signal and invoke graceful termination
 		stop := make(chan os.Signal, 1)
-		signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)
+		signal.Notify(stop, os.Interrupt, syscall.SIGINT, syscall.SIGTERM)
 		<-stop
 		log.Println("Shutdown signal received\n*********************************")
 		cancel()
