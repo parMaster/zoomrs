@@ -6,13 +6,14 @@ Wants=network-online.target
 Wants=nss-lookup.target
 Before=nss-lookup.target
 
-StartLimitBurst=5
-StartLimitIntervalSec=10
+# This parameter should make systemd try to start a service forever
+# with Restart=always and RestartSec=30 it should retry every 30 sec indefinitely
+StartLimitIntervalSec=0
 
 [Service]
 Type=simple
 Restart=always
-RestartSec=1
+RestartSec=30
 User=%USER%
 ExecStart=/usr/bin/zoomrs --config /etc/zoomrs/config.yml
 StandardOutput=append:/var/log/zoomrs.log
