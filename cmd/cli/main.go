@@ -143,7 +143,7 @@ type Options struct {
 	Config string `long:"config" env:"CONFIG" default:"config/config_cli.yml" description:"yaml config file name"`
 	Days   int    `long:"days" env:"DEBUG" description:"(today - 'days') day to sync. Default is 1 (yesterday)" default:"1"`
 	Dbg    bool   `long:"dbg" env:"DEBUG" description:"show debug info"`
-	Trash  int    `long:"trash" description:"trash old meetings after N days" default:"-1"`
+	Trash  int    `long:"trash" description:"trash old meetings after N days. Required when '--cmd=trash'" default:"-1"`
 	Cmd    string `long:"cmd" description:"run command"`
 }
 

@@ -49,7 +49,7 @@ See `config/config_example.yaml` for example configuration file, available optio
 3. Run `make run` to build the binary and run it in foreground mode
 
 		make run
-4. To stop the service press `Ctrl+C`
+4. To stop the service press `Ctrl+C` (or send `SIGINT`, `SIGTERM` signal to the process)
 
 ### Systemd service
 1. Repeat steps 1 and 2 from the previous section

@@ -4,6 +4,7 @@ go 1.20
 
 require (
 	github.com/cavaliergopher/grab/v3 v3.0.1
+	github.com/gdamore/tcell/v2 v2.6.0
 	github.com/go-chi/chi/v5 v5.0.8
 	github.com/go-pkgz/auth v1.18.0
 	github.com/go-pkgz/lgr v0.11.0
@@ -24,7 +25,6 @@ require (
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/dghubble/oauth1 v0.7.2 // indirect
 	github.com/gdamore/encoding v1.0.0 // indirect
-	github.com/gdamore/tcell/v2 v2.6.0 // indirect
 	github.com/go-ole/go-ole v1.2.6 // indirect
 	github.com/go-pkgz/repeater v1.1.3 // indirect
 	github.com/golang-jwt/jwt v3.2.2+incompatible // indirect

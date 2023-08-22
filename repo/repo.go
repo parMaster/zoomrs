@@ -25,6 +25,7 @@ var (
 	ErrNoQueuedRecords = errors.New("no records queued to download")
 )
 
+// Client is an interface for the Zoom API client
 type Client interface {
 	Authorize() error
 	GetMeetings(daysAgo int) ([]model.Meeting, error)
@@ -32,12 +33,18 @@ type Client interface {
 	DeleteMeetingRecordings(meetingId string, delete bool) error
 }
 
+// syncable is a struct that holds record types grouped by priority for syncing
+// these are set in the config file
 type syncable struct {
 	Important   map[model.RecordType]bool
 	Alternative map[model.RecordType]bool
 	Optional    map[model.RecordType]bool
 }
 
+// Repository does the heavy lifting of syncing meetings and downloading recordings
+// it can call the Zoom API client to get meetings, store and mutate them in the database
+// according to their download status. Perform the actual download of recordings and
+// delete them from Zoom if configured to do so.
 type Repository struct {
 	store    storage.Storer
 	client   Client
@@ -65,6 +72,7 @@ func NewRepository(store storage.Storer, client Client, cfg *config.Parameters) 
 	return &Repository{store: store, client: client, cfg: cfg, Syncable: sync}
 }
 
+// SyncJob is a long running job that tries SyncMeeting on a regular interval
 func (r *Repository) SyncJob(ctx context.Context) {
 
 	if len(r.Syncable.Important)+len(r.Syncable.Alternative)+len(r.Syncable.Optional) == 0 {
@@ -97,6 +105,8 @@ func (r *Repository) SyncJob(ctx context.Context) {
 	}
 }
 
+// SyncMeeting gets a slice of meetings and saves new ones to the database.
+// Filter for MinDuration and RecordType is applied.
 func (r *Repository) SyncMeetings(meetings *[]model.Meeting) error {
 	if len(*meetings) == 0 {
 		log.Printf("[DEBUG] No meetings to sync")
@@ -121,7 +131,7 @@ func (r *Repository) SyncMeetings(meetings *[]model.Meeting) error {
 			if err == storage.ErrNoRows {
 
 				// filter out meeting recordings that are not supported
-				// and sort them by importance
+				// and sort them by priority
 				var important, alternative, optional []model.Record
 				for _, record := range meeting.Records {
 					if _, ok := r.Syncable.Important[record.Type]; ok {
@@ -162,13 +172,13 @@ func (r *Repository) SyncMeetings(meetings *[]model.Meeting) error {
 
 				err := r.store.SaveMeeting(meeting)
 				if err != nil {
-					return fmt.Errorf("failed to save meeting %s, %v", meeting.UUID, err)
+					return fmt.Errorf("failed to save meeting %s, %w", meeting.UUID, err)
 				}
 				saved++
 
 				continue
 			}
-			return fmt.Errorf("failed to get meeting %s, %v", meeting.UUID, err)
+			return fmt.Errorf("failed to get meeting %s, %w", meeting.UUID, err)
 		} else {
 			skipExists++
 		}
@@ -178,6 +188,7 @@ func (r *Repository) SyncMeetings(meetings *[]model.Meeting) error {
 	return nil
 }
 
+// DownloadJob is a long running job that tries DownloadOnce on a regular interval
 func (r *Repository) DownloadJob(ctx context.Context) {
 	ticker := time.NewTicker(1 * time.Second)
 	for {
@@ -199,7 +210,7 @@ func (r *Repository) DownloadJob(ctx context.Context) {
 	}
 }
 
-// DownloadOnce runs download job once
+// DownloadOnce gets a queued record and downloads it
 func (r *Repository) DownloadOnce() error {
 	queued, err := r.store.GetQueuedRecord()
 	if err == storage.ErrNoRows {
@@ -239,7 +250,7 @@ func (r *Repository) DownloadOnce() error {
 	return nil
 }
 
-// DownloadRecord downloads the record from Zoom
+// DownloadRecord downloads the record file from the given URL
 func (r *Repository) DownloadRecord(record *model.Record) error {
 
 	token, err := r.client.GetToken()
@@ -427,7 +438,7 @@ func (r *Repository) requestMeetingsLoaded(meetings []string) (loaded bool, err 
 func (r *Repository) CheckConsistency() (checked int, result error) {
 	recs, err := r.store.GetRecordsByStatus(model.StatusDownloaded)
 	if err != nil {
-		return 0, err
+		return 0, fmt.Errorf("failed to get records by status %s: %w", model.StatusDownloaded, err)
 	}
 
 	for _, rec := range recs {
@@ -460,7 +471,7 @@ func (r *Repository) CheckConsistency() (checked int, result error) {
 func (r *Repository) freeUpSpace() (deleted int, result error) {
 	usage, err := disk.Usage(r.cfg.Storage.Repository)
 	if err != nil {
-		return 0, err
+		return 0, fmt.Errorf("failed to get disk usage: %w", err)
 	}
 	log.Printf("[DEBUG] Free space: %d b (%d GB)", usage.Free, usage.Free/1024/1024/1024)
 	log.Printf("[DEBUG] Keep free space: %d b", r.cfg.Storage.KeepFreeSpace)
@@ -471,13 +482,13 @@ func (r *Repository) freeUpSpace() (deleted int, result error) {
 
 	meetings, err := r.store.ListMeetings()
 	if err != nil {
-		return 0, err
+		return 0, fmt.Errorf("failed to list meetings: %w", err)
 	}
 
 	for im := len(meetings) - 1; im >= 0; im-- {
 		usage, err := disk.Usage(r.cfg.Storage.Repository)
 		if err != nil {
-			return deleted, err
+			return deleted, fmt.Errorf("failed to get disk usage: %w", err)
 		}
 		if usage.Free > uint64(r.cfg.Storage.KeepFreeSpace) {
 			log.Printf("[INFO] Free space is %d b (%d GB), deleted %d records", usage.Free, usage.Free/1024/1024/1024, deleted)
@@ -486,7 +497,7 @@ func (r *Repository) freeUpSpace() (deleted int, result error) {
 
 		recs, err := r.store.GetRecords(meetings[im].UUID)
 		if err != nil {
-			return deleted, err
+			return deleted, fmt.Errorf("failed to get records for meeting %s, %w", meetings[im].UUID, err)
 		}
 		for ir := 0; ir < len(recs); ir++ {
 			if recs[ir].Status == model.StatusDownloaded && len(recs[ir].Id) > 0 {
