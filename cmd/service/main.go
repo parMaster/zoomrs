@@ -101,8 +101,8 @@ func (s *Server) startServer(ctx context.Context) {
 	<-ctx.Done()
 	log.Printf("[INFO] Terminating http server")
 
-	if err := httpServer.Close(); err != nil {
-		log.Printf("[ERROR] failed to close http server, %v", err)
+	if err := httpServer.Shutdown(ctx); err != nil {
+		log.Printf("[ERROR] shutdown http server: %v", err)
 	}
 }
 
@@ -158,7 +158,7 @@ func main() {
 
 		// catch signal and invoke graceful termination
 		stop := make(chan os.Signal, 1)
-		signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)
+		signal.Notify(stop, os.Interrupt, syscall.SIGINT, syscall.SIGTERM)
 		<-stop
 		log.Println("Shutdown signal received\n*********************************")
 		cancel()
