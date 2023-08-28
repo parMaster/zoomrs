@@ -8,9 +8,9 @@ import (
 
 // Errors for cache
 const (
-	ErrKeyNotFound = "Key not found"
-	ErrKeyExists   = "Key already exists"
-	ErrExpired     = "Key expired"
+	ErrKeyNotFound = "key not found"
+	ErrKeyExists   = "key already exists"
+	ErrExpired     = "key expired"
 )
 
 // CacheItem is a struct for cache item
@@ -36,10 +36,16 @@ type Cacher interface {
 }
 
 // NewCache is a constructor for Cache
-func NewCache() *Cache {
-	return &Cache{
+func NewCache(options ...func(*Cache)) *Cache {
+	c := &Cache{
 		data: make(map[string]CacheItem),
 	}
+
+	for _, option := range options {
+		option(c)
+	}
+
+	return c
 }
 
 // Set is a method for setting key-value pair
@@ -142,4 +148,16 @@ func (c *Cache) Cleanup() {
 		}
 	}
 	c.mx.Unlock()
+}
+
+// WithCleanup is a functional option for setting interval and starting Cleanup goroutine
+func WithCleanup(ttl int64) func(*Cache) {
+	return func(c *Cache) {
+		go func() {
+			for {
+				c.Cleanup()
+				time.Sleep(time.Duration(ttl) * time.Second)
+			}
+		}()
+	}
 }
