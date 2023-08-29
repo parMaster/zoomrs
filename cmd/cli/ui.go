@@ -2,6 +2,7 @@ package main
 
 import (
 	"log"
+	"time"
 
 	"github.com/gdamore/tcell/v2"
 	"github.com/parMaster/zoomrs/storage/model"
@@ -20,6 +21,7 @@ func (s *Commander) ShowUI() {
 			log.Printf("[ERROR] GetMeetings: %e", err)
 		}
 		meetings = append(meetings, m...)
+		time.Sleep(s.cfg.Client.RateLimitingDelay.Light) // avoid rate limit
 	}
 
 	table.SetCell(0, 0,

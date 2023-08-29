@@ -90,6 +90,8 @@ func (z *ZoomClient) GetToken() (*AccessToken, error) {
 	return z.token, nil
 }
 
+// GetMeetings - get meetings for a given day (daysAgo = 0 for today)
+// Medium rate limit API
 func (z *ZoomClient) GetMeetings(daysAgo int) ([]model.Meeting, error) {
 	_, err := z.GetToken()
 	if err != nil {
@@ -138,7 +140,7 @@ func (z *ZoomClient) GetMeetings(daysAgo int) ([]model.Meeting, error) {
 		}
 		log.Printf("[DEBUG] recordings.NextPageToken = %v", recordings.NextPageToken)
 		params.Set(`next_page_token`, recordings.NextPageToken)
-		time.Sleep(500 * time.Millisecond) // avoid rate limit
+		time.Sleep(z.cfg.RateLimitingDelay.Medium) // avoid rate limit
 	}
 
 	return meetings, nil
@@ -149,6 +151,7 @@ func (z *ZoomClient) GetMeetings(daysAgo int) ([]model.Meeting, error) {
 // GET /report/cloud_recording
 // - from string - start date in format yyyy-mm-dd
 // - to string - end date in format yyyy-mm-dd
+// HEAVY rate limit API
 func (z *ZoomClient) GetCloudStorageReport(from, to string) (*model.CloudRecordingReport, error) {
 	_, err := z.GetToken()
 	if err != nil {
@@ -191,6 +194,7 @@ func (z *ZoomClient) GetCloudStorageReport(from, to string) (*model.CloudRecordi
 // DELETE /meetings/{meetingId}/recordings
 // - meetingId string
 // - delete bool - true to delete, false to trash
+// Light rate limit API
 func (z *ZoomClient) DeleteMeetingRecordings(meetingId string, delete bool) error {
 
 	if !z.cfg.DeleteDownloaded && !z.cfg.TrashDownloaded && !z.cfg.DeleteSkipped {

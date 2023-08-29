@@ -381,7 +381,7 @@ func (r *Repository) CleanupJob(ctx context.Context, daysAgo int) {
 					} else {
 						deleted++
 					}
-					time.Sleep(1 * time.Second) // avoid rate limit
+					time.Sleep(r.cfg.Client.RateLimitingDelay.Light)
 				}
 			}
 			log.Printf("[INFO] Deleted %d out of %d meetings", deleted, len(meetings))

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"time"
 
 	"gopkg.in/yaml.v3"
 )
@@ -19,12 +20,38 @@ type Parameters struct {
 
 // Client is the Zoom client configuration
 type Client struct {
-	AccountId        string `yaml:"account_id"`        // Zoom account id
-	Id               string `yaml:"id"`                // Zoom client id
-	Secret           string `yaml:"secret"`            // Zoom client secret
-	DeleteDownloaded bool   `yaml:"delete_downloaded"` // Delete downloaded files from Zoom cloud
-	TrashDownloaded  bool   `yaml:"trash_downloaded"`  // Move downloaded files to trash
-	DeleteSkipped    bool   `yaml:"delete_skipped"`    // Delete skipped files from Zoom cloud (the ones that are shorter than MinDuration)
+	AccountId         string            `yaml:"account_id"`          // Zoom account id
+	Id                string            `yaml:"id"`                  // Zoom client id
+	Secret            string            `yaml:"secret"`              // Zoom client secret
+	DeleteDownloaded  bool              `yaml:"delete_downloaded"`   // Delete downloaded files from Zoom cloud
+	TrashDownloaded   bool              `yaml:"trash_downloaded"`    // Move downloaded files to trash
+	DeleteSkipped     bool              `yaml:"delete_skipped"`      // Delete skipped files from Zoom cloud (the ones that are shorter than MinDuration)
+	RateLimitingDelay RateLimitingDelay `yaml:"rate_limiting_delay"` // Rate limiting delay
+}
+
+// RateLimitingDelay is the delay between requests to Zoom API
+// ms between looped requests. APIs are grouped into categories with progressively longer delays
+type RateLimitingDelay struct {
+	Light  time.Duration
+	Medium time.Duration
+	Heavy  time.Duration
+}
+
+// unmarshal RateLimitingDaley fields to time.Duration
+func (r *RateLimitingDelay) UnmarshalYAML(value *yaml.Node) error {
+	type tmp struct {
+		Light  int `yaml:"light"`
+		Medium int `yaml:"medium"`
+		Heavy  int `yaml:"heavy"`
+	}
+	var t tmp
+	if err := value.Decode(&t); err != nil {
+		return err
+	}
+	r.Light = time.Duration(t.Light) * time.Millisecond
+	r.Medium = time.Duration(t.Medium) * time.Millisecond
+	r.Heavy = time.Duration(t.Heavy) * time.Millisecond
+	return nil
 }
 
 type Server struct {
