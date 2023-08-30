@@ -153,6 +153,15 @@ Another example response, when there are recordings in `queued` and `downloading
 }
 ```
 
+#### GET `/check`
+Auth required. Runs a consistency check of the repository (see `check` cli tool cmd, it's the same). Example response:
+```json
+{
+  "checked": 5278,
+  "error": null
+}
+```
+
 #### GET `/stats[/<K|M|G>]`
 Auth required. Returns the total size of the recordings grouped by date. Optional parameter `K`, `M` or `G` can be used to specify the size in KB, MB or GB respectively. If no parameter is specified, the size is returned in bytes. Example response:
 ```json
@@ -241,7 +250,7 @@ You can run multiple instances of the service to increase reliability, duplicate
 2. One or many secondary instances that download recordings but don't host web frontend. Two options are available here:
 	- Run the service with `server.sync_job: true` and `server.download_job: true` in the configuration file. This way download job will run somewhere from 00:00 to 01:00 am.
 	- Run the service with `server.sync_job: false` and `server.download_job: false` so it will just host the API. Run downloader with cron job (see `sync` cmd crontab line example in the previous section). This way you can set the time to run the download job
-3. Run cleanup job on one of the instances (see `trash` cmd crontab line example in the previous section). Use configuration file that enumerates all the instances in `server.instances` section. This way cleanup job will check all the instances for consistency and delete recordings from Zoom Cloud only if all the instances have downloaded them. Disable deleting and trashing downloaded recordings (`client.trash_downloaded: false` and `client.delete_downloaded: false` in the configuration file) on each instance. 
+3. Run cleanup job on one of the instances (see `trash` cmd crontab line example in the previous section). Use configuration file that enumerates all the instances in `server.instances` section. This way cleanup job will check all the instances for consistency and trash/delete recordings from Zoom Cloud only if all the instances have downloaded them. Disable deleting and trashing downloaded recordings (`client.trash_downloaded: false` and `client.delete_downloaded: false` in the configuration file) on every other instance but this one.
 
 ### Database backup
 Backup database file regularly to prevent data loss. See example shell script at `dist/backup_db.sh`. It can be run as a cron job like this:
