@@ -3,6 +3,7 @@ package config
 import (
 	"log"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 )
@@ -30,6 +31,14 @@ func Test_LoadConfig(t *testing.T) {
 	assert.NotEmpty(t, conf.Client.Secret)
 	assert.IsType(t, conf.Client.TrashDownloaded, true)
 	assert.IsType(t, conf.Client.DeleteDownloaded, true)
+
+	assert.NotEmpty(t, conf.Client.RateLimitingDelay)
+	assert.NotEmpty(t, conf.Client.RateLimitingDelay.Light)
+	assert.NotEmpty(t, conf.Client.RateLimitingDelay.Medium)
+	assert.NotEmpty(t, conf.Client.RateLimitingDelay.Heavy)
+	assert.IsType(t, conf.Client.RateLimitingDelay.Light, time.Duration(0))
+	assert.IsType(t, conf.Client.RateLimitingDelay.Medium, time.Duration(0))
+	assert.IsType(t, conf.Client.RateLimitingDelay.Heavy, time.Duration(0))
 
 	assert.NotEmpty(t, conf.Syncable)
 	assert.NotEmpty(t, conf.Syncable.Important)
