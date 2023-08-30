@@ -17,6 +17,7 @@ client:
   trash_downloaded: false  # CLI should use separate config with cli-specific trash_downloaded, in multi-instance setup
   delete_downloaded: false # trumps trash_downloaded
   delete_skipped: true # delete meetings with duraion < syncable.min_duration? even if this is true, files will not be deleted if delete_downloaded is false, but will be trashed if trash_downloaded is true
+  cloud_capacity_hard_limit: 107374182400 # 100 GB
   rate_limiting_delay: # ms between looped requests. APIs are grouped into categories with progressively longer delays
     light: 300 # Free acc: 4 requests/second (250ms/request is safe, 300ms/r is extra safe); Pro: 30 r/s; Business: 80 r/s
     medium: 550 # Free acc: 2 r/s; Pro: 20 r/s; Business: 60 r/s

@@ -6,6 +6,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/parMaster/zoomrs/storage/model"
 	"gopkg.in/yaml.v3"
 )
 
@@ -20,13 +21,14 @@ type Parameters struct {
 
 // Client is the Zoom client configuration
 type Client struct {
-	AccountId         string            `yaml:"account_id"`          // Zoom account id
-	Id                string            `yaml:"id"`                  // Zoom client id
-	Secret            string            `yaml:"secret"`              // Zoom client secret
-	DeleteDownloaded  bool              `yaml:"delete_downloaded"`   // Delete downloaded files from Zoom cloud
-	TrashDownloaded   bool              `yaml:"trash_downloaded"`    // Move downloaded files to trash
-	DeleteSkipped     bool              `yaml:"delete_skipped"`      // Delete skipped files from Zoom cloud (the ones that are shorter than MinDuration)
-	RateLimitingDelay RateLimitingDelay `yaml:"rate_limiting_delay"` // Rate limiting delay
+	AccountId              string            `yaml:"account_id"`                // Zoom account id
+	Id                     string            `yaml:"id"`                        // Zoom client id
+	Secret                 string            `yaml:"secret"`                    // Zoom client secret
+	DeleteDownloaded       bool              `yaml:"delete_downloaded"`         // Delete downloaded files from Zoom cloud
+	TrashDownloaded        bool              `yaml:"trash_downloaded"`          // Move downloaded files to trash
+	DeleteSkipped          bool              `yaml:"delete_skipped"`            // Delete skipped files from Zoom cloud (the ones that are shorter than MinDuration)
+	CloudCapacityHardLimit model.FileSize    `yaml:"cloud_capacity_hard_limit"` // Hard limit for cloud storage capacity (in bytes)
+	RateLimitingDelay      RateLimitingDelay `yaml:"rate_limiting_delay"`       // Rate limiting delay
 }
 
 // RateLimitingDelay is the delay between requests to Zoom API
@@ -72,7 +74,7 @@ type Storage struct {
 	Type          string `yaml:"type"`            // Type of storage to use. Currently supported: sqlite
 	Path          string `yaml:"path"`            // Path to the database file
 	Repository    string `yaml:"repository"`      // Path to the repository folder where downloaded files are stored
-	KeepFreeSpace uint64 `yaml:"keep_free_space"` // Keep at least this amount of free space (in GB)
+	KeepFreeSpace uint64 `yaml:"keep_free_space"` // Keep at least this amount of free space (in bytes) on the local storage
 }
 
 type Syncable struct {

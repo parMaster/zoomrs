@@ -60,6 +60,16 @@ func (s *Commander) Run(opts Options) {
 			break
 		}
 		r.CleanupJob(s.ctx, opts.Trash)
+	case "cloudcap":
+		log.Printf("[INFO] starting DeleteRecordingsOverCapacity")
+		// Last line of defence against Zoom cloud storage overuse:
+		// 00 10 * * * cd $HOME/go/src/zoomrs/dist && ./zoomrs-cli --dbg --cmd cloudcap --config ../config/config_cli.yml >> /var/log/cron.log 2>&1
+		deleted, err := s.client.DeleteRecordingsOverCapacity(s.ctx, s.cfg.Client.CloudCapacityHardLimit)
+		if err != nil {
+			log.Printf("[ERROR] DeleteRecordingsOverCapacity: %d, %e", deleted, err)
+		} else {
+			log.Printf("[INFO] DeleteRecordingsOverCapacity: OK, %d meetings deleted", deleted)
+		}
 	case "sync":
 		log.Printf("[INFO] starting SyncJob")
 

@@ -232,6 +232,10 @@ Run it like this:
 
 	will trash all recordings from the day before yesterday every day at 10:00 AM. `--config` option is used to specify the path to the configuration file. `--dbg` option can be used to enable debug logging. Logs are written to stdout, and redirected to `/var/log/cron.log` in the example above.
 
+- `cloudcap` - trims recordings from Zoom Cloud to avoid exceeding the storage limit. Leaves `Client.CloudCapacityHardLimit` bytes of the most recent recordings (review the value in config before running!), trashes the rest. Cron job line to run it every day at 5:30 AM (don't mind the paths, they are specific to my setup, use your own):
+
+		30 05 * * * cd $HOME/go/src/zoomrs/dist && ./zoomrs-cli --dbg --cmd cloudcap --config ../config/config_cli.yml >> /var/log/cron.log 2>&1
+
 - `sync` - syncs recordings from Zoom Cloud. Run it like this:
 
 		./zoomrs-cli --dbg --cmd sync --days 1

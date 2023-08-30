@@ -1,12 +1,14 @@
 package client
 
 import (
+	"context"
 	"log"
 	"os"
 	"testing"
 	"time"
 
 	"github.com/parMaster/zoomrs/config"
+	"github.com/parMaster/zoomrs/storage/model"
 
 	"github.com/stretchr/testify/assert"
 )
@@ -36,10 +38,17 @@ func Test_ZoomClient(t *testing.T) {
 	assert.NoError(t, err)
 	assert.NotNil(t, meetings)
 
+	// GetIntervalMeetings test
 	meetingsInterval, err := c.GetIntervalMeetings(time.Now().AddDate(0, 0, -1), time.Now().AddDate(0, 0, -1))
 	assert.NoError(t, err)
 	assert.NotNil(t, meetingsInterval)
 	assert.Equal(t, len(meetings), len(meetingsInterval))
+
+	// DeleteRecordingsOverCapacity test
+	storageCapacity := model.FileSize(500 * 1024 * 1024 * 1024) // 500GB
+	deleted, err := c.DeleteRecordingsOverCapacity(context.Background(), storageCapacity)
+	assert.NoError(t, err)
+	assert.NotNil(t, deleted)
 
 	// Get cloud storage
 	// from the day before yesterday to yesterday

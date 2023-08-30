@@ -1,6 +1,8 @@
 package client
 
 import (
+	"cmp"
+	"context"
 	b64 "encoding/base64"
 	"encoding/json"
 	"errors"
@@ -8,6 +10,7 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -155,6 +158,57 @@ func (z *ZoomClient) GetIntervalMeetings(from, to time.Time) ([]model.Meeting, e
 	return meetings, nil
 }
 
+// GetAllMeetings - get all meetings going from today back in the past by 30 days chunks
+// as soon as we hit 2 empty chunks in a row, we assume there are no earlier meetings
+func (z *ZoomClient) GetAllMeetings() ([]model.Meeting, error) {
+	meetings := []model.Meeting{}
+	var i, empty int
+	for {
+		i++
+		from := time.Now().AddDate(0, 0, -1*i*30)
+		to := time.Now().AddDate(0, 0, -1*(i-1)*30)
+		m, err := z.GetIntervalMeetings(from, to)
+		if err != nil {
+			return nil, errors.Join(fmt.Errorf("unable to get interval meetings"), err)
+		}
+		meetings = append(meetings, m...)
+
+		if len(m) == 0 {
+			empty++
+		} else {
+			empty = 0
+		}
+		if empty >= 2 {
+			break
+		}
+	}
+	return meetings, nil
+}
+
+// GetAllMeetingsWithRetry - runs GetAllMeetings() with up to 10 retries with increasing delay
+func (z *ZoomClient) GetAllMeetingsWithRetry(ctx context.Context) ([]model.Meeting, error) {
+	var meetings []model.Meeting
+	var err error
+
+	for i := 0; i < 10; i++ {
+		meetings, err = z.GetAllMeetings()
+		if err != nil {
+			delay := 30 * time.Duration(i) * time.Second
+			log.Printf("[ERROR] failed to get meetings, %v, retrying in %s sec", err, delay)
+
+			select {
+			case <-time.After(delay):
+				continue
+			case <-ctx.Done():
+				return nil, ctx.Err() // Return if the context is cancelled
+			}
+		}
+		break
+	}
+
+	return meetings, err
+}
+
 // GetCloudStorageReport - get cloud storage usage
 // https://developers.zoom.us/docs/api/rest/reference/zoom-api/methods/#operation/reportCloudRecording
 // GET /report/cloud_recording
@@ -201,7 +255,7 @@ func (z *ZoomClient) GetCloudStorageReport(from, to string) (*model.CloudRecordi
 // DeleteMeetingRecordings - delete all recordings for a meeting
 // https://developers.zoom.us/docs/api/rest/reference/zoom-api/methods/#operation/recordingDelete
 // DELETE /meetings/{meetingId}/recordings
-// - meetingId string
+// - meetingId string is meeting.UUID
 // - delete bool - true to delete, false to trash
 // Light rate limit API
 func (z *ZoomClient) DeleteMeetingRecordings(meetingId string, delete bool) error {
@@ -247,4 +301,45 @@ func (z *ZoomClient) DeleteMeetingRecordings(meetingId string, delete bool) erro
 	}
 
 	return nil
+}
+
+func (z *ZoomClient) DeleteRecordingsOverCapacity(ctx context.Context, cloudStorageCap model.FileSize) (deleted int, err error) {
+	if cloudStorageCap == 0 {
+		return 0, errors.New("cloud storage capacity is not configured")
+	}
+	log.Printf("[DEBUG] cloudStorageCap is set to: %s", cloudStorageCap)
+
+	meetings, err := z.GetAllMeetingsWithRetry(ctx)
+	if err != nil {
+		log.Printf("[ERROR] failed to get meetings, %v", err)
+		return 0, errors.Join(fmt.Errorf("unable to GetAllMeetingsWithRetry"), err)
+	}
+
+	// Sort meetings by start time - first meeting is the most recent
+	slices.SortFunc(meetings, func(i, j model.Meeting) int {
+		//     DESC sort by StartTime
+		return -1 * cmp.Compare(i.StartTime.UnixNano(), j.StartTime.UnixNano())
+	})
+
+	sizeAccum := model.FileSize(0)
+	for _, m := range meetings {
+
+		for _, r := range m.Records {
+			sizeAccum += r.FileSize
+		}
+
+		if sizeAccum > cloudStorageCap {
+			log.Printf("[DEBUG] cap reached, cloud used: %s \t deleting uuid: %s", sizeAccum, m.UUID)
+			if err := z.DeleteMeetingRecordings(m.UUID, true); err != nil {
+				log.Printf("[ERROR] deleting uuid: %s, %v", m.UUID, err)
+			} else {
+				deleted++
+			}
+			time.Sleep(z.cfg.RateLimitingDelay.Light)
+		} else {
+			log.Printf("[DEBUG] uuid: %s \t cloud used: %s", m.UUID, sizeAccum)
+		}
+	}
+
+	return
 }
