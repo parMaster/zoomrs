@@ -90,9 +90,18 @@ func (z *ZoomClient) GetToken() (*AccessToken, error) {
 	return z.token, nil
 }
 
-// GetMeetings - get meetings for a given day (daysAgo = 0 for today)
+// GetMeetings - get meetings for a given day (daysAgo = 0 for today, 1 for yestarday, etc.)
 // Medium rate limit API
 func (z *ZoomClient) GetMeetings(daysAgo int) ([]model.Meeting, error) {
+	from := time.Now().AddDate(0, 0, -1*daysAgo)
+	to := time.Now().AddDate(0, 0, -1*daysAgo)
+
+	return z.GetIntervalMeetings(from, to)
+}
+
+// GetIntervalMeetings - get meetings for a from-to interval
+// Medium rate limit API
+func (z *ZoomClient) GetIntervalMeetings(from, to time.Time) ([]model.Meeting, error) {
 	_, err := z.GetToken()
 	if err != nil {
 		return nil, errors.Join(fmt.Errorf("unable to get token"), err)
@@ -100,8 +109,8 @@ func (z *ZoomClient) GetMeetings(daysAgo int) ([]model.Meeting, error) {
 
 	params := url.Values{}
 	params.Add(`page_size`, "300")
-	params.Add(`from`, time.Now().AddDate(0, 0, -1*daysAgo).Format("2006-01-02"))
-	params.Add(`to`, time.Now().AddDate(0, 0, -1*daysAgo).Format("2006-01-02"))
+	params.Add(`from`, from.Format("2006-01-02"))
+	params.Add(`to`, to.Format("2006-01-02"))
 	log.Printf("[DEBUG] initial params = %s", params.Encode())
 	req, err := http.NewRequest(http.MethodGet, "https://api.zoom.us/v2/users/me/recordings?"+params.Encode(), nil)
 	if err != nil {

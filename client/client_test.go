@@ -36,6 +36,11 @@ func Test_ZoomClient(t *testing.T) {
 	assert.NoError(t, err)
 	assert.NotNil(t, meetings)
 
+	meetingsInterval, err := c.GetIntervalMeetings(time.Now().AddDate(0, 0, -1), time.Now().AddDate(0, 0, -1))
+	assert.NoError(t, err)
+	assert.NotNil(t, meetingsInterval)
+	assert.Equal(t, len(meetings), len(meetingsInterval))
+
 	// Get cloud storage
 	// from the day before yesterday to yesterday
 	from := time.Now().AddDate(0, 0, -2).Format("2006-01-02")
