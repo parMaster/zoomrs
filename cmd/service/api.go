@@ -176,7 +176,9 @@ func (s *Server) statusHandler(rw http.ResponseWriter, r *http.Request) {
 	}
 
 	rw.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(rw).Encode(resp)
+	enc := json.NewEncoder(rw)
+	enc.SetIndent("", "    ")
+	enc.Encode(resp)
 }
 
 func (s *Server) listMeetingsHandler(rw http.ResponseWriter, r *http.Request) {
@@ -298,7 +300,9 @@ func (s *Server) statsHandler(rw http.ResponseWriter, r *http.Request) {
 	}
 
 	rw.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(rw).Encode(resp)
+	enc := json.NewEncoder(rw)
+	enc.SetIndent("", "    ")
+	enc.Encode(resp)
 }
 
 func filesOnly(next http.Handler) http.Handler {
