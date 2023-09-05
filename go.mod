@@ -9,12 +9,12 @@ require (
 	github.com/go-pkgz/auth v1.22.0
 	github.com/go-pkgz/lgr v0.11.0
 	github.com/go-pkgz/rest v1.17.0
+	github.com/jessevdk/go-flags v1.5.0
 	github.com/mattn/go-sqlite3 v1.14.17
 	github.com/parMaster/mcache v0.0.0-20230804152454-034f528ba385
 	github.com/rivo/tview v0.0.0-20230814110005-ccc2c8119703
 	github.com/shirou/gopsutil/v3 v3.23.7
 	github.com/stretchr/testify v1.8.4
-	github.com/umputun/go-flags v1.5.1
 	golang.org/x/oauth2 v0.11.0
 	gopkg.in/yaml.v3 v3.0.1
 )

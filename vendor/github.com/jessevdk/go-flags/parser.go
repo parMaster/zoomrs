@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"os"
 	"path"
+	"reflect"
 	"sort"
 	"strings"
 	"unicode/utf8"
@@ -207,8 +208,7 @@ func (p *Parser) ParseArgs(args []string) ([]string, error) {
 	}
 
 	p.eachOption(func(c *Command, g *Group, option *Option) {
-		option.isSet = false
-		option.isSetDefault = false
+		option.clearReferenceBeforeSet = true
 		option.updateDefaultLiteral()
 	})
 
@@ -310,11 +310,13 @@ func (p *Parser) ParseArgs(args []string) ([]string, error) {
 
 	if s.err == nil {
 		p.eachOption(func(c *Command, g *Group, option *Option) {
-			if option.preventDefault {
-				return
+			err := option.clearDefault()
+			if err != nil {
+				if _, ok := err.(*Error); !ok {
+					err = p.marshalError(option, err)
+				}
+				s.err = err
 			}
-
-			option.clearDefault()
 		})
 
 		s.checkRequired(p)
@@ -562,14 +564,35 @@ func (p *Parser) parseOption(s *parseState, name string, option *Option, canarg 
 
 	if err != nil {
 		if _, ok := err.(*Error); !ok {
-			err = newErrorf(ErrMarshal, "invalid argument for flag `%s' (expected %s): %s",
-				option,
-				option.value.Type(),
-				err.Error())
+			err = p.marshalError(option, err)
 		}
 	}
 
 	return err
+}
+
+func (p *Parser) marshalError(option *Option, err error) *Error {
+	s := "invalid argument for flag `%s'"
+
+	expected := p.expectedType(option)
+
+	if expected != "" {
+		s = s + " (expected " + expected + ")"
+	}
+
+	return newErrorf(ErrMarshal, s+": %s",
+		option,
+		err.Error())
+}
+
+func (p *Parser) expectedType(option *Option) string {
+	valueType := option.value.Type()
+
+	if valueType.Kind() == reflect.Func {
+		return ""
+	}
+
+	return valueType.String()
 }
 
 func (p *Parser) parseLong(s *parseState, name string, argument *string) error {
@@ -688,14 +711,4 @@ func (p *Parser) printError(err error) error {
 	}
 
 	return err
-}
-
-func (p *Parser) clearIsSet() {
-	p.eachCommand(func(c *Command) {
-		c.eachGroup(func(g *Group) {
-			for _, option := range g.options {
-				option.isSet = false
-			}
-		})
-	}, true)
 }

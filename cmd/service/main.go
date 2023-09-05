@@ -23,7 +23,7 @@ import (
 
 	"github.com/go-pkgz/auth"
 	"github.com/go-pkgz/lgr"
-	flags "github.com/umputun/go-flags"
+	flags "github.com/jessevdk/go-flags"
 )
 
 type Server struct {

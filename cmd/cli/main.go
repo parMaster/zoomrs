@@ -11,12 +11,12 @@ import (
 	"time"
 
 	"github.com/go-pkgz/lgr"
+	"github.com/jessevdk/go-flags"
 	"github.com/parMaster/zoomrs/client"
 	"github.com/parMaster/zoomrs/config"
 	"github.com/parMaster/zoomrs/repo"
 	"github.com/parMaster/zoomrs/storage"
 	"github.com/parMaster/zoomrs/storage/sqlite"
-	"github.com/umputun/go-flags"
 )
 
 type Commander struct {
