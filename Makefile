@@ -67,7 +67,9 @@ release:
 	@echo " \n\n +++ +++ +++ +++ +++ config.yml  +++ +++ +++ +++ +++  \n\n "
 	cat dist/config.yml | sed 's/:/:\x1b[31m/g; s/#.*//' | awk '{print "\x1b[0m"$$0}'
 	@echo " \n\n "
-	goreleaser --snapshot --skip-publish --clean
+	cd dist && ./multibuild.sh $(GITREV)
+	cd ..
 	ls -l dist/release
+
 
 .PHONY: build buildsvc dbg test run info status deploy start stop cli release
