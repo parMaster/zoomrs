@@ -38,14 +38,14 @@ You need to specify the list of users that are allowed to access the web fronten
 
 
 ## Configuration
-See `config/config_example.yaml` for example configuration file, available options and their descriptions. Copy it to `config/config.yaml` and edit it to your liking.
+See `config/config_example.yml` for example configuration file, available options and their descriptions. Copy it to `config/config.yml` and edit it to your liking.
 
 ### Foreground mode 
 1. Clone the repository from GitHub
 
 		git clone https://github.com/parMaster/zoomrs.git
 
-2. Make sure `config/config.yaml` exists and is configured properly
+2. Make sure `config/config.yml` exists and is configured properly
 3. Run `make run` to build the binary and run it in foreground mode
 
 		make run
@@ -67,7 +67,7 @@ Log files are located at `/var/log/zoomrs.log` and `/var/log/zoomrs.err` by defa
 
 		git clone https://github.com/parMaster/zoomrs.git
 
-2. Make sure `config/config.yaml` exists and is configured properly
+2. Make sure `config/config.yml` exists and is configured properly
 3. Check configuration parameters in Dockerfile and docker-compose.yml
 4. Build and run container
 

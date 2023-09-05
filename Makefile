@@ -55,4 +55,19 @@ deploy:
 	sudo systemctl enable zoomrs.service
 	sudo systemctl start zoomrs.service
 
-.PHONY: build buildsvc dbg test run info status deploy start stop
+cli:
+	./dist/zoomrs-cli --config ./config/config_cli.yml
+
+release:
+	@echo release to dist/release
+	mkdir -p dist/release
+	cp config/config_example.yml dist/config.yml
+#	take a look at the config we are going to show to the world
+#	highlighting the values and cut off the comments in the console output
+	@echo " \n\n +++ +++ +++ +++ +++ config.yml  +++ +++ +++ +++ +++  \n\n "
+	cat dist/config.yml | sed 's/:/:\x1b[31m/g; s/#.*//' | awk '{print "\x1b[0m"$$0}'
+	@echo " \n\n "
+	goreleaser --snapshot --skip-publish --clean
+	ls -l dist/release
+
+.PHONY: build buildsvc dbg test run info status deploy start stop cli release
