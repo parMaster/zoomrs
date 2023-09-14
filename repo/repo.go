@@ -498,20 +498,24 @@ func (r *Repository) freeUpSpace() (deleted int, result error) {
 		if err != nil {
 			return deleted, fmt.Errorf("failed to get records for meeting %s, %w", meetings[im].UUID, err)
 		}
-		for ir := 0; ir < len(recs); ir++ {
-			if recs[ir].Status == model.StatusDownloaded && len(recs[ir].Id) > 0 {
-				recFolder := r.cfg.Storage.Repository + "/" + recs[ir].Id
-				if err := os.RemoveAll(recFolder); err != nil {
-					log.Printf("[DEBUG] Failed to delete %s, %v", recFolder, err)
-					errors.Join(result, fmt.Errorf("failed to delete %s, %v; ", recFolder, err))
-				} else {
-					deleted++
-					log.Printf("[DEBUG] Deleted %s", recFolder)
-					r.store.UpdateRecord(recs[ir].Id, model.StatusDeleted, "")
-				}
+		for ir := range recs {
+			if recs[ir].Status != model.StatusDownloaded || len(recs[ir].Id) == 0 {
+				continue // skip records that are not downloaded or have no Id somehow
+			}
+			recFolder := fmt.Sprintf("%s/%s/%s", r.cfg.Storage.Repository, recs[ir].DateTime[:10], recs[ir].Id)
+			if _, err := os.Stat(recFolder); err != nil {
+				log.Printf("[ERROR] %s does not exist, skipping", recFolder)
+				continue
+			}
+			if err := os.RemoveAll(recFolder); err != nil {
+				log.Printf("[DEBUG] Failed to delete %s, %v", recFolder, err)
+				errors.Join(result, fmt.Errorf("failed to delete %s, %v; ", recFolder, err))
+			} else {
+				deleted++
+				log.Printf("[DEBUG] Deleted %s", recFolder)
+				r.store.UpdateRecord(recs[ir].Id, model.StatusDeleted, "")
 			}
 		}
-
 	}
 	return
 }
