@@ -29,13 +29,13 @@ type AccessToken struct {
 
 type ZoomClient struct {
 	cfg    *config.Client
-	client *http.Client
+	client http.Client
 	token  *AccessToken
 	mx     sync.Mutex
 }
 
 func NewZoomClient(cfg config.Client) *ZoomClient {
-	client := &http.Client{}
+	client := http.Client{}
 
 	return &ZoomClient{cfg: &cfg, client: client}
 }
