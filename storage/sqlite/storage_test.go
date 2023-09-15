@@ -131,7 +131,7 @@ func Test_SqliteStorage(t *testing.T) {
 	assert.Equal(t, model.StatusQueued, records[2].Status)
 
 	// List meetings
-	meetings, err := store.ListMeetings()
+	meetings, err := store.GetMeetings()
 	assert.NoError(t, err)
 	assert.Equal(t, 1, len(meetings))
 	assert.Equal(t, testMeeting.UUID, meetings[0].UUID)
