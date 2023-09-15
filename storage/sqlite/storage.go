@@ -195,8 +195,30 @@ func (s *SQLiteStorage) GetRecordsInfo(UUID string) ([]model.RecordInfo, error) 
 }
 
 // ListMeetings returns a list of meetings from the database
-func (s *SQLiteStorage) ListMeetings() ([]model.Meeting, error) {
+func (s *SQLiteStorage) GetMeetings() ([]model.Meeting, error) {
 	q := "SELECT * FROM `meetings` ORDER BY startTime DESC"
+	rows, err := s.DB.QueryContext(s.ctx, q)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var meetings []model.Meeting
+	for rows.Next() {
+		meeting := model.Meeting{}
+		err := rows.Scan(&meeting.UUID, &meeting.Id, &meeting.Topic, &meeting.DateTime)
+		if err != nil {
+			return nil, err
+		}
+		meetings = append(meetings, meeting)
+	}
+	return meetings, nil
+}
+
+// ListMeetings returns a list of meetings ready to be shown in the UI
+// Meeting must have at least one recording of type 'MP4' with status =='downloaded'
+func (s *SQLiteStorage) ListMeetings() ([]model.Meeting, error) {
+	q := "SELECT DISTINCT m.* FROM `meetings` m JOIN `records` r ON m.uuid = r.meetingId WHERE status = 'downloaded' AND r.fileExtension = 'MP4' ORDER BY startTime DESC"
 	rows, err := s.DB.QueryContext(s.ctx, q)
 	if err != nil {
 		return nil, err

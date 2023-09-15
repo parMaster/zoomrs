@@ -15,6 +15,7 @@ type Storer interface {
 	GetMeeting(UUID string) (*model.Meeting, error)
 	GetMeetingById(Id string) (*model.Meeting, error)
 	ListMeetings() ([]model.Meeting, error)
+	GetMeetings() ([]model.Meeting, error)
 	GetRecords(UUID string) ([]model.Record, error)
 	GetRecordsByStatus(model.RecordStatus) ([]model.Record, error)
 	GetRecordsInfo(UUID string) ([]model.RecordInfo, error)

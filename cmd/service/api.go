@@ -201,6 +201,7 @@ func (s *Server) listMeetingsHandler(rw http.ResponseWriter, r *http.Request) {
 
 	// mix in an accessKey for each meeting to be used in watchMeeting
 	for i := range m {
+
 		s := m[i].UUID + s.cfg.Server.AccessKeySalt
 		h := md5.New()
 		io.WriteString(h, s)

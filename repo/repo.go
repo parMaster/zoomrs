@@ -479,7 +479,7 @@ func (r *Repository) freeUpSpace() (deleted int, result error) {
 	}
 	log.Printf("[DEBUG] Free space Available/Required: %d b/ %d b (%d GB/ %d GB)", usage.Free, r.cfg.Storage.KeepFreeSpace, usage.Free/1024/1024/1024, r.cfg.Storage.KeepFreeSpace/1024/1024/1024)
 
-	meetings, err := r.store.ListMeetings()
+	meetings, err := r.store.GetMeetings()
 	if err != nil {
 		return 0, fmt.Errorf("failed to list meetings: %w", err)
 	}

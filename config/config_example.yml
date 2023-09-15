@@ -17,7 +17,7 @@ client:
   trash_downloaded: false  # CLI should use separate config with cli-specific trash_downloaded, in multi-instance setup
   delete_downloaded: false # trumps trash_downloaded
   delete_skipped: true # delete meetings with duraion < syncable.min_duration? even if this is true, files will not be deleted if delete_downloaded is false, but will be trashed if trash_downloaded is true
-  cloud_capacity_hard_limit: 107374182400 # 100 GB
+  cloud_capacity_hard_limit: 107374182400 # 100 GB - don't allow cloud storage to grow more than this value. Look up 'cloudcap' in README for more info.
   rate_limiting_delay: # ms between looped requests. APIs are grouped into categories with progressively longer delays
     light: 300 # Free acc: 4 requests/second (250ms/request is safe, 300ms/r is extra safe); Pro: 30 r/s; Business: 80 r/s
     medium: 550 # Free acc: 2 r/s; Pro: 20 r/s; Business: 60 r/s
@@ -26,7 +26,7 @@ storage:
   type: sqlite
   path: file:.tmp/data1.db?mode=rwc&_journal_mode=WAL
   repository: .tmp # Path to download files
-  keep_free_space: 107374182400 # 100 GB
+  keep_free_space: 107374182400 # 100 GB - keep at least this much free space on disk. Evict old recordings until this is satisfied.
 syncable:
     important: ["shared_screen_with_gallery_view"] # recordings of these types will be downloaded
     alternative: ["shared_screen_with_speaker_view"] # recordings of these types will be downloaded if no important types are available
