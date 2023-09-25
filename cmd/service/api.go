@@ -269,6 +269,7 @@ func (s *Server) watchMeetingHandler(rw http.ResponseWriter, r *http.Request) {
 
 func (s *Server) statsHandler(rw http.ResponseWriter, r *http.Request) {
 	div := chi.URLParam(r, "divider")
+	div = strings.ToUpper(div)
 
 	stats, _ := s.store.GetRecordsByStatus(model.StatusDownloaded)
 	if stats == nil {
@@ -292,7 +293,7 @@ func (s *Server) statsHandler(rw http.ResponseWriter, r *http.Request) {
 		"M": 1024 * 1024,
 		"G": 1024 * 1024 * 1024,
 	}
-	divider, ok := dividers[strings.ToUpper(div)]
+	divider, ok := dividers[div]
 	if !ok {
 		divider = 1
 	}
