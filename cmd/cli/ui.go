@@ -42,10 +42,13 @@ func (s *Commander) ShowUI() {
 			SetTextColor(tcell.ColorYellow).
 			SetAlign(tview.AlignLeft))
 
+	var totalSize model.FileSize
+
 	for i, m := range meetings {
 
-		var totalSize model.FileSize
+		var meetingSize model.FileSize
 		for _, r := range m.Records {
+			meetingSize += r.FileSize
 			totalSize += r.FileSize
 			// log.Printf("[DEBUG] record %d: %+v", j, r)
 		}
@@ -65,7 +68,7 @@ func (s *Commander) ShowUI() {
 				SetAlign(tview.AlignCenter))
 
 		table.SetCell(i+1, 3,
-			tview.NewTableCell(totalSize.String()).
+			tview.NewTableCell(meetingSize.String()).
 				SetTextColor(tcell.ColorDarkCyan).
 				SetAlign(tview.AlignLeft))
 
@@ -86,5 +89,7 @@ func (s *Commander) ShowUI() {
 	if err := app.SetRoot(table, true).EnableMouse(true).Run(); err != nil {
 		panic(err)
 	}
+
+	log.Printf("[INFO] total size: %s", totalSize.String())
 
 }
