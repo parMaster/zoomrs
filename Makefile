@@ -56,6 +56,7 @@ deploy:
 	sudo systemctl start zoomrs.service
 
 cli:
+	go build -o dist/zoomrs-cli -v ./cmd/cli
 	./dist/zoomrs-cli --config ./config/config_cli.yml
 
 release:
