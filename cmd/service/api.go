@@ -292,7 +292,7 @@ func (s *Server) statsHandler(rw http.ResponseWriter, r *http.Request) {
 		"M": 1024 * 1024,
 		"G": 1024 * 1024 * 1024,
 	}
-	divider, ok := dividers[div]
+	divider, ok := dividers[strings.ToUpper(div)]
 	if !ok {
 		divider = 1
 	}
