@@ -268,45 +268,28 @@ func (s *Server) watchMeetingHandler(rw http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) statsHandler(rw http.ResponseWriter, r *http.Request) {
-	div := chi.URLParam(r, "divider")
-	div = strings.ToUpper(div)
+	divider := chi.URLParam(r, "divider")
+	divider = strings.ToUpper(divider)
+	d := []rune(divider)[0]
 
-	stats, _ := s.store.GetRecordsByStatus(model.StatusDownloaded)
-	if stats == nil {
+	stats, err := s.repo.GetStats(d)
+	if err != nil {
 		rw.WriteHeader(http.StatusInternalServerError)
 		return
 	}
 
-	// group stats by day, calculate sum of the file size
-	resp := map[string]int64{}
-
-	for _, r := range stats {
-		day := r.DateTime[:10]
-		if _, ok := resp[day]; !ok {
-			resp[day] = 0
-		}
-		resp[day] += int64(r.FileSize)
-	}
-
-	dividers := map[string]int64{
-		"K": 1024,
-		"M": 1024 * 1024,
-		"G": 1024 * 1024 * 1024,
-	}
-	divider, ok := dividers[div]
-	if !ok {
-		divider = 1
-	}
-	for k, v := range resp {
-		resp[k] = v / divider
+	if stats == nil {
+		rw.WriteHeader(http.StatusNoContent)
+		return
 	}
 
 	rw.Header().Set("Content-Type", "application/json")
 	enc := json.NewEncoder(rw)
 	enc.SetIndent("", "    ")
-	enc.Encode(resp)
+	enc.Encode(stats)
 }
 
+// filesOnly is a middleware to allow only files to be served, no directory listings allowed
 func filesOnly(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if strings.HasSuffix(r.URL.Path, "/") {

@@ -519,3 +519,36 @@ func (r *Repository) freeUpSpace() (deleted int, result error) {
 	}
 	return
 }
+
+// GetStats - returns statistics about the repository.
+func (r *Repository) GetStats(d rune) (stats map[string]int64, err error) {
+	recs, err := r.store.GetRecordsByStatus(model.StatusDownloaded)
+	if recs == nil {
+		return nil, fmt.Errorf("failed to get records by status %s: %w", model.StatusDownloaded, err)
+	}
+
+	// group stats by day, calculate sum of the file size
+	resp := map[string]int64{}
+	for _, rec := range recs {
+		day := rec.DateTime[:10]
+		if _, ok := resp[day]; !ok {
+			resp[day] = 0
+		}
+		resp[day] += int64(rec.FileSize)
+	}
+
+	dividers := map[rune]int64{
+		'K': 1024,
+		'M': 1024 * 1024,
+		'G': 1024 * 1024 * 1024,
+	}
+	divider, ok := dividers[d]
+	if !ok {
+		divider = 1
+	}
+	for k, v := range resp {
+		resp[k] = v / divider
+	}
+
+	return resp, nil
+}
