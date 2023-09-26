@@ -327,6 +327,9 @@ func (r *Repository) meetingRecordsLoaded(meetingId string) bool {
 	return true
 }
 
+// CleanupJob is a long running job that tries to delete recordings from Zoom Cloud if they are downloaded.
+// It calls /meetingsLoaded POST API of each instance listed in cfg.Commander.Instances to ask if the list of
+// meetings (uuids) recordings are downloaded. If all instances return "ok", the recordings are deleted.
 func (r *Repository) CleanupJob(ctx context.Context, daysAgo int) {
 	var retry int
 	for {
@@ -435,6 +438,7 @@ func (r *Repository) requestMeetingsLoaded(meetings []string) (loaded bool, err 
 }
 
 // CheckConsistency checks if all downloaded files exist and have correct size
+// returns number of checked files and error
 func (r *Repository) CheckConsistency() (checked int, result error) {
 	recs, err := r.store.GetRecordsByStatus(model.StatusDownloaded)
 	if err != nil {
@@ -520,7 +524,9 @@ func (r *Repository) freeUpSpace() (deleted int, result error) {
 	return
 }
 
-// GetStats - returns statistics about the repository.
+// GetStats - returns statistics about the repository. d is a divider for the file size: 'K', 'M', 'G'.
+// returns map[day]size in d units (K, M, G) for all downloaded records grouped by day. day is in format YYYY-MM-DD
+// if d is not one of the supported dividers, the size is returned in bytes
 func (r *Repository) GetStats(d rune) (stats map[string]int64, err error) {
 	recs, err := r.store.GetRecordsByStatus(model.StatusDownloaded)
 	if recs == nil {
