@@ -428,7 +428,7 @@ func (r *Repository) requestMeetingsLoaded(meetings []string) (loaded bool, err 
 		if err != nil {
 			return false, fmt.Errorf("failed to decode response body, %v", err)
 		}
-		log.Printf("[DEBUG] meetingsLoaded result: %v", result)
+		log.Printf("[INFO] %s/meetingsLoaded result: %v", instance, result)
 		if result.Result != "ok" {
 			return false, nil
 		}
