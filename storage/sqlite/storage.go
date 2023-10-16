@@ -3,6 +3,7 @@ package sqlite
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"log"
 	"time"
 
@@ -20,12 +21,15 @@ type SQLiteStorage struct {
 func NewStorage(ctx context.Context, path string) (*SQLiteStorage, error) {
 	sqliteDatabase, err := sql.Open("sqlite3", path)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("open db: %s", err)
 	}
 
 	go func() {
 		<-ctx.Done()
-		sqliteDatabase.Close()
+		err := sqliteDatabase.Close()
+		if err != nil {
+			log.Printf("[ERROR] Failed to close SQLite database: %e", err)
+		}
 	}()
 
 	q := `CREATE TABLE IF NOT EXISTS meetings (
@@ -109,21 +113,6 @@ func (s *SQLiteStorage) saveRecord(record model.Record) error {
 func (s *SQLiteStorage) GetMeeting(UUID string) (*model.Meeting, error) {
 	q := "SELECT * FROM `meetings` WHERE uuid = $1"
 	row := s.DB.QueryRowContext(s.ctx, q, UUID)
-	meeting := model.Meeting{}
-	err := row.Scan(&meeting.UUID, &meeting.Id, &meeting.Topic, &meeting.DateTime)
-	if err != nil {
-		if err == sql.ErrNoRows {
-			return nil, storage.ErrNoRows
-		}
-		return nil, err
-	}
-	return &meeting, nil
-}
-
-// GetMeeting returns a meeting from the database
-func (s *SQLiteStorage) GetMeetingById(Id string) (*model.Meeting, error) {
-	q := "SELECT * FROM `meetings` WHERE id = $1"
-	row := s.DB.QueryRowContext(s.ctx, q, Id)
 	meeting := model.Meeting{}
 	err := row.Scan(&meeting.UUID, &meeting.Id, &meeting.Topic, &meeting.DateTime)
 	if err != nil {

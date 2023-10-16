@@ -15,6 +15,7 @@ require (
 	github.com/rivo/tview v0.0.0-20230814110005-ccc2c8119703
 	github.com/shirou/gopsutil/v3 v3.23.7
 	github.com/stretchr/testify v1.8.4
+	go.etcd.io/bbolt v1.3.7
 	golang.org/x/oauth2 v0.11.0
 	gopkg.in/yaml.v3 v3.0.1
 )
@@ -53,7 +54,6 @@ require (
 	github.com/xdg-go/stringprep v1.0.4 // indirect
 	github.com/youmark/pkcs8 v0.0.0-20201027041543-1326539a0a0a // indirect
 	github.com/yusufpapurcu/wmi v1.2.3 // indirect
-	go.etcd.io/bbolt v1.3.7 // indirect
 	go.mongodb.org/mongo-driver v1.12.1 // indirect
 	golang.org/x/crypto v0.12.0 // indirect
 	golang.org/x/image v0.11.0 // indirect

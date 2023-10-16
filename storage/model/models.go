@@ -32,13 +32,13 @@ const (
 
 // Recordings - json response from zoom api
 type Recordings struct {
-	From          string    `json:"from"`
-	To            string    `json:"to"`
-	PageSize      int       `json:"page_size"`
-	PageCount     int       `json:"page_count"`
-	TotalRecords  int       `json:"total_records"`
-	NextPageToken string    `json:"next_page_token"`
-	Meetings      []Meeting `json:"meetings"`
+	From          string   `json:"from"`
+	To            string   `json:"to"`
+	PageSize      int      `json:"page_size"`
+	PageCount     int      `json:"page_count"`
+	TotalRecords  int      `json:"total_records"`
+	NextPageToken string   `json:"next_page_token"`
+	Meetings      Meetings `json:"meetings"`
 }
 
 // Meeting contains the meeting details
@@ -46,7 +46,7 @@ type Meeting struct {
 	UUID      string    `json:"uuid"` // primary key
 	Id        uint64    `json:"id"`
 	Topic     string    `json:"topic"`
-	Records   []Record  `json:"recording_files"`
+	Records   Records   `json:"recording_files"`
 	StartTime time.Time `json:"start_time"`
 	DateTime  string    `json:"date_time"`
 	Duration  int       `json:"duration"`
@@ -116,4 +116,35 @@ func (f FileSize) String() string {
 
 func (f FileSize) MarshalJSON() ([]byte, error) {
 	return []byte(fmt.Sprintf(`"%s"`, f.String())), nil
+}
+
+// Meetings is a slice of Meeting, implements sort.Interface
+// Can be used like sort.Sort(meetings) or sort.Sort(sort.Reverse(meetings))
+type Meetings []Meeting
+
+func (m Meetings) Len() int {
+	return len(m)
+}
+
+func (m Meetings) Less(i, j int) bool {
+	return m[i].StartTime.Before(m[j].StartTime)
+}
+
+func (m Meetings) Swap(i, j int) {
+	m[i], m[j] = m[j], m[i]
+}
+
+// Records is a slice of Record, implements sort.Interface
+type Records []Record
+
+func (r Records) Len() int {
+	return len(r)
+}
+
+func (r Records) Less(i, j int) bool {
+	return r[i].StartTime.Before(r[j].StartTime)
+}
+
+func (r Records) Swap(i, j int) {
+	r[i], r[j] = r[j], r[i]
 }
