@@ -140,13 +140,12 @@ func main() {
 	logOpts := []lgr.Option{
 		lgr.LevelBraces,
 		lgr.StackTraceOnError,
+		lgr.Secret(conf.Client.AccountId, conf.Client.Id, conf.Client.Secret),
 	}
 	if conf.Server.Dbg {
 		logOpts = append(logOpts, lgr.Debug)
 	}
 	lgr.SetupStdLogger(logOpts...)
-
-	lgr.Secret(conf.Client.AccountId, conf.Client.Id, conf.Client.Secret)
 
 	// Graceful termination
 	ctx, cancel := context.WithCancel(context.Background())
