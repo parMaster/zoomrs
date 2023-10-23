@@ -250,11 +250,17 @@ func (s *Server) watchMeetingHandler(rw http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	records, err := s.store.GetRecordsInfo(meeting.UUID)
+	records, err := s.store.GetRecords(meeting.UUID)
 	if err != nil {
 		log.Printf("[ERROR] failed to get records, %v", err)
 		rw.WriteHeader(http.StatusInternalServerError)
 		return
+	}
+	// cleanup records of columns FileExtension, DownloadURL, PlayURL
+	for i := range records {
+		records[i].FileExtension = ""
+		records[i].DownloadURL = ""
+		records[i].PlayURL = ""
 	}
 
 	log.Printf("[INFO] /watchMeeting granted")

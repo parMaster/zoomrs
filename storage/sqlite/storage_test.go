@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/parMaster/zoomrs/config"
 	"github.com/parMaster/zoomrs/storage"
 	"github.com/parMaster/zoomrs/storage/model"
 	"github.com/stretchr/testify/assert"
@@ -16,8 +17,13 @@ func Test_SqliteStorage(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	var err error
-	store, err := NewStorage(ctx, "file:../../.tmp/test_storage.db?mode=rwc&_journal_mode=WAL")
+	cfgPath := "../../config/config_example.yml"
+	cfg, err := config.NewConfig(cfgPath)
+	assert.Nil(t, err)
+
+	dbPath := cfg.Storage.Path
+
+	store, err := NewStorage(ctx, dbPath)
 	if err != nil {
 		log.Printf("[ERROR] Failed to open SQLite storage: %e", err)
 	}

@@ -68,17 +68,6 @@ type Record struct {
 	FilePath      string       `json:"file_path"` // local file path
 }
 
-// RecordInfo describes the records for API response
-type RecordInfo struct {
-	Id        string       `json:"id"`         // primary key for Record
-	MeetingId string       `json:"meeting_id"` // foreign key to Meeting.UUID
-	Type      RecordType   `json:"recording_type"`
-	DateTime  string       `json:"date_time"`
-	FileSize  FileSize     `json:"file_size"` // bytes
-	Status    RecordStatus `json:"status"`
-	FilePath  string       `json:"file_path"` // local file path
-}
-
 // CloudRecordingReport describes the cloud recording report
 type CloudRecordingReport struct {
 	From                  string                  `json:"from"`
