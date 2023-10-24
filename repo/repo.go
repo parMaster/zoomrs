@@ -478,10 +478,10 @@ func (r *Repository) freeUpSpace() (deleted int, result error) {
 		return 0, fmt.Errorf("failed to get disk usage: %w", err)
 	}
 	if usage.Free > uint64(r.cfg.Storage.KeepFreeSpace) {
-		log.Printf("[DEBUG] Free space is %d b (%d GB), no need to free up space", usage.Free, usage.Free/1024/1024/1024)
+		log.Printf("[DEBUG] Free space is %d b (%d GB), no need to free up space (%d required)", usage.Free, usage.Free/1024/1024/1024, r.cfg.Storage.KeepFreeSpace)
 		return 0, nil
 	}
-	log.Printf("[DEBUG] Free space Available/Required: %d b/ %d b (%d GB/ %d GB)", usage.Free, r.cfg.Storage.KeepFreeSpace, usage.Free/1024/1024/1024, r.cfg.Storage.KeepFreeSpace/1024/1024/1024)
+	log.Printf("[DEBUG] Free space Available/Required: %d b/ %d b (%d GB/ %d GB), delta = %d (bytes over the limit)", usage.Free, r.cfg.Storage.KeepFreeSpace, usage.Free/1024/1024/1024, r.cfg.Storage.KeepFreeSpace/1024/1024/1024, r.cfg.Storage.KeepFreeSpace-usage.Free)
 
 	meetings, err := r.store.GetMeetings()
 	if err != nil {

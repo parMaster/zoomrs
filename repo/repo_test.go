@@ -18,7 +18,7 @@ import (
 func Test_FreeUpSpace(t *testing.T) {
 	// Setting the things up
 
-	cfgPath := "../config/config_dbg.yml"
+	cfgPath := "../config/config_example.yml"
 	// check if config file exists
 	if _, err := os.Stat(cfgPath); os.IsNotExist(err) {
 		t.Skip("Config file does not exist: " + cfgPath)
@@ -28,12 +28,10 @@ func Test_FreeUpSpace(t *testing.T) {
 		t.Skip("Failed to load config: " + cfgPath)
 	}
 
-	cfg.Storage.Path = "file:../.tmp/repo_test_storage.db?mode=rwc&_journal_mode=WAL"
+	cfg.Storage.Path = "file:" + cfg.Storage.Repository + "/repo_test_storage.db?mode=rwc&_journal_mode=WAL"
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-
-	cfg.Storage.Repository = "../.tmp/test_repository"
 
 	store, err := sqlite.NewStorage(ctx, cfg.Storage.Path)
 	if err != nil {
@@ -59,7 +57,7 @@ func Test_FreeUpSpace(t *testing.T) {
 			Status:        model.StatusDownloaded,
 			DownloadURL:   "testDownUrl",
 			PlayURL:       "testPlayUrl",
-			FilePath:      cfg.Storage.Repository + "/Id1/Id1.m4a",
+			FilePath:      cfg.Storage.Repository + "/" + time.Now().Format("2006-01-02") + "/Id1/Id1.m4a",
 		},
 		{
 			Id:            "Id2",
@@ -71,7 +69,7 @@ func Test_FreeUpSpace(t *testing.T) {
 			Status:        model.StatusDownloaded,
 			DownloadURL:   "testDownUrl",
 			PlayURL:       "testPlayUrl",
-			FilePath:      cfg.Storage.Repository + "/Id2/Id2.m4a",
+			FilePath:      cfg.Storage.Repository + "/" + time.Now().Format("2006-01-02") + "/Id2/Id2.m4a",
 		},
 		{
 			Id:            "Id3",
@@ -83,12 +81,12 @@ func Test_FreeUpSpace(t *testing.T) {
 			Status:        model.StatusDownloaded,
 			DownloadURL:   "testDownUrl",
 			PlayURL:       "testPlayUrl",
-			FilePath:      cfg.Storage.Repository + "/Id3/Id3.m4a",
+			FilePath:      cfg.Storage.Repository + "/" + time.Now().Format("2006-01-02") + "/Id3/Id3.m4a",
 		},
 	}
 
 	for _, rec := range testRecords {
-		repo.prepareDestination(cfg.Storage.Repository + "/" + rec.Id)
+		repo.prepareDestination(cfg.Storage.Repository + "/" + time.Now().Format("2006-01-02") + "/" + rec.Id)
 		os.WriteFile(rec.FilePath, []byte("test"), 0644)
 	}
 
@@ -140,7 +138,7 @@ func Test_FreeUpSpace(t *testing.T) {
 			Status:        model.StatusDownloaded,
 			DownloadURL:   "testDownUrl",
 			PlayURL:       "testPlayUrl",
-			FilePath:      cfg.Storage.Repository + "/Id1/Id1.m4a",
+			FilePath:      cfg.Storage.Repository + "/" + time.Now().Format("2006-01-02") + "/Id1/Id1.m4a",
 		},
 		{
 			Id:            "Id2",
@@ -152,7 +150,7 @@ func Test_FreeUpSpace(t *testing.T) {
 			Status:        model.StatusDownloaded,
 			DownloadURL:   "testDownUrl",
 			PlayURL:       "testPlayUrl",
-			FilePath:      cfg.Storage.Repository + "/Id2/Id2.m4a",
+			FilePath:      cfg.Storage.Repository + "/" + time.Now().Format("2006-01-02") + "/Id2/Id2.m4a",
 		},
 		{
 			Id:            "Id3",
@@ -164,7 +162,7 @@ func Test_FreeUpSpace(t *testing.T) {
 			Status:        model.StatusDownloaded,
 			DownloadURL:   "testDownUrl",
 			PlayURL:       "testPlayUrl",
-			FilePath:      cfg.Storage.Repository + "/Id3/Id3.m4a",
+			FilePath:      cfg.Storage.Repository + "/" + time.Now().Format("2006-01-02") + "/Id3/Id3.m4a",
 		},
 	}
 
@@ -177,7 +175,7 @@ func Test_FreeUpSpace(t *testing.T) {
 	log.Println("Free space before test: ", usage.Free)
 
 	for _, rec := range testRecords {
-		repo.prepareDestination(cfg.Storage.Repository + "/" + rec.Id)
+		repo.prepareDestination(cfg.Storage.Repository + "/" + time.Now().Format("2006-01-02") + "/" + rec.Id)
 		os.WriteFile(rec.FilePath, []byte("test"), 0644)
 	}
 

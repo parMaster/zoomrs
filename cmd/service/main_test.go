@@ -2,54 +2,101 @@ package main
 
 import (
 	"context"
-	"fmt"
-	"log"
 	"os"
-	"strings"
 	"testing"
+	"time"
 
+	"github.com/parMaster/zoomrs/client"
 	"github.com/parMaster/zoomrs/config"
+	"github.com/parMaster/zoomrs/repo"
 	"github.com/parMaster/zoomrs/storage"
 	"github.com/parMaster/zoomrs/storage/model"
 	"github.com/stretchr/testify/assert"
 )
 
-func setup() (*config.Parameters, error) {
-	cfgPath := "../../config/config.yml"
-	// check if config file exists
-	if _, err := os.Stat(cfgPath); os.IsNotExist(err) {
-		return nil, fmt.Errorf("Config file does not exist: %s", cfgPath)
-	}
-	cfg, err := config.NewConfig(cfgPath)
+func setup(cfg *config.Parameters, store storage.Storer) error {
 
+	timeNow := time.Now()
+
+	testRecords := []model.Record{
+		{
+			Id:            "Id1",
+			MeetingId:     "testUUID",
+			Type:          model.AudioOnly,
+			StartTime:     timeNow,
+			FileExtension: "M4A",
+			FileSize:      4,
+			Status:        model.StatusDownloaded,
+			DownloadURL:   "testDownUrl",
+			PlayURL:       "testPlayUrl",
+			FilePath:      cfg.Storage.Repository + "/Id1.m4a",
+		},
+		{
+			Id:            "Id2",
+			MeetingId:     "testUUID",
+			Type:          "testType",
+			StartTime:     timeNow,
+			FileExtension: "M4A",
+			FileSize:      4,
+			Status:        model.StatusDownloaded,
+			DownloadURL:   "testDownUrl",
+			PlayURL:       "testPlayUrl",
+			FilePath:      cfg.Storage.Repository + "/Id2.m4a",
+		},
+		{
+			Id:            "Id3",
+			MeetingId:     "testUUID",
+			Type:          model.ChatFile,
+			StartTime:     timeNow,
+			FileExtension: "M4A",
+			FileSize:      4,
+			Status:        model.StatusDownloaded,
+			DownloadURL:   "testDownUrl",
+			PlayURL:       "testPlayUrl",
+			FilePath:      cfg.Storage.Repository + "/Id3.m4a",
+		},
+	}
+
+	testMeeting := model.Meeting{
+		UUID:      "testUUID",
+		Id:        11122223333,
+		Topic:     "testTopic",
+		StartTime: timeNow,
+		Records:   testRecords,
+	}
+
+	err := store.SaveMeeting(testMeeting)
 	if err != nil {
-		return nil, fmt.Errorf("[ERROR] failed to load config: %e", err)
+		return err
 	}
 
-	dbPath := cfg.Storage.Path
-	// cut off "file:" prefix
-	dbPath = dbPath[5:]
-	// cut off parameters after ? in dbPath
-	if i := strings.Index(dbPath, "?"); i != -1 {
-		dbPath = dbPath[:i]
+	// create files
+	for _, rec := range testRecords {
+		err := os.WriteFile(rec.FilePath, []byte("test"), 0644)
+		if err != nil {
+			return err
+		}
+		// log.Printf("[DEBUG] Created file: %s", rec.FilePath)
 	}
 
-	// check if db file exists
-	if _, err := os.Stat(dbPath); os.IsNotExist(err) {
-		return nil, fmt.Errorf("Database file does not exist: %s", dbPath)
-	}
-
-	log.Println("Database file: ", dbPath)
-	return cfg, nil
+	return nil
 }
 
 // go test -v ./cmd/service -run ^Test_CheckConsistency$
 // check if all records have corresponding files
 func Test_CheckConsistency(t *testing.T) {
 
-	cfg, err := setup()
-	if err != nil {
-		t.Skip(err.Error())
+	cfgPath := "../../config/config_example.yml"
+	if os.Getenv("CONFIG") != "" {
+		cfgPath = os.Getenv("CONFIG")
+	}
+	cfg, err := config.NewConfig(cfgPath)
+	assert.Nil(t, err)
+
+	// add unix timestamp to db file name
+	cfg.Storage.Path = "file:" + os.TempDir() + "/" + time.Now().Format("20060102150405") + "-zoomrs_test.db?mode=rwc&_journal_mode=WAL"
+	if os.Getenv("STORE") != "" {
+		cfg.Storage.Path = os.Getenv("STORE")
 	}
 
 	var s storage.Storer
@@ -59,27 +106,16 @@ func Test_CheckConsistency(t *testing.T) {
 		t.Skip(err.Error())
 	}
 
-	recs, err := s.GetRecordsByStatus(model.StatusDownloaded)
+	err = setup(cfg, s)
 	assert.NoError(t, err)
-	var checked int
-	for _, rec := range recs {
-		// check if file with path exists
-		if _, err := os.Stat(rec.FilePath); os.IsNotExist(err) {
-			fmt.Println("File does not exist: ", rec.FilePath)
-		}
-		// check if file is not empty
-		if info, err := os.Stat(rec.FilePath); err == nil {
-			if info.Size() == 0 {
-				fmt.Println("File is empty: ", rec.FilePath)
-			}
-		}
-		// check if file size matches record.FileSize
-		if info, err := os.Stat(rec.FilePath); err == nil {
-			if info.Size() != int64(rec.FileSize) {
-				fmt.Println("File size does not match: ", rec.FilePath)
-			}
-		}
-		checked++
-	}
-	fmt.Println("Checked files: ", checked)
+
+	client := client.NewZoomClient(cfg.Client)
+
+	repo := repo.NewRepository(s, client, cfg)
+
+	checked, err := repo.CheckConsistency()
+
+	assert.NoError(t, err)
+	assert.Equal(t, 3, checked)
+
 }
