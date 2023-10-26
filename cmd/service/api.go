@@ -132,7 +132,7 @@ func (s *Server) statusHandler(rw http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		log.Printf("[DEBUG] miss")
 
-		cloudStorageReport, err = s.client.GetCloudStorageReport(time.Now().AddDate(0, 0, -2).Format("2006-01-02"), time.Now().Format("2006-01-02"))
+		cloudStorageReport, err = s.client.GetCloudStorageReport(time.Now().AddDate(0, 0, -7).Format("2006-01-02"), time.Now().Format("2006-01-02"))
 		if err != nil {
 			log.Printf("[ERROR] failed to get cloud storage report, %v", err)
 			rw.WriteHeader(http.StatusInternalServerError)

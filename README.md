@@ -123,7 +123,7 @@ status can be:
 
 `stats` section contains number of recordings and their total size in GB and MB grouped by status
 
-`cloud` section contains Zoom cloud storage usage stats. `free_usage` is the amount of free storage, `plan_usage` is the amount of storage available for the current plan, `usage` is the amount of storage used by recordings, `usage_percent` is the percentage of used storage.
+`cloud` section contains Zoom cloud storage usage stats. `date` is the last time the stats were updated (it is updated every 24 hours, so if you see the date is not today, it means the stats dodn't change since then), `free_usage` is the amount of free storage, `plan_usage` is the amount of storage available for the current plan, `usage` is the amount of storage used by recordings, `usage_percent` is the percentage of used storage.
 
 `storage` section contains the stats of the local storage. `free` is the amount of free storage, `total` is the total amount of storage, `usage_percent` is the percentage of used storage, `used` is the amount of used storage.
 
