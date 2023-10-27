@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"log"
 	"os"
+	"sync"
 	"testing"
 	"time"
 
@@ -14,6 +15,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+// Complete integration test. Requires Zoom credentials.
 func Test_ZoomClient(t *testing.T) {
 
 	cfgPath := "../config/config_cli.yml"
@@ -61,12 +63,45 @@ func Test_ZoomClient(t *testing.T) {
 	assert.NotNil(t, storageReport)
 	log.Printf("[DEBUG] Storage report: %+v", storageReport)
 
+	// Get token error condition
+	cfg.Client.Secret = "error"
+	c = NewZoomClient(cfg.Client)
+	assert.NotNil(t, c)
+	token, err := c.GetToken()
+	assert.Error(t, err)
+	assert.Nil(t, token)
+	// t.Logf("Error: %v", err)
+}
+
+var m sync.Mutex
+
+// Tests a specific race condition in GetToken()
+func Test_ZoomGetTokenRaceTest(t *testing.T) {
+
+	cfgPath := "../config/config_cli.yml"
+
+	if _, err := os.Stat(cfgPath); os.IsNotExist(err) {
+		t.Skip("Config file does not exist: " + cfgPath)
+	}
+
+	cfg, err := config.NewConfig(cfgPath)
+	assert.NoError(t, err)
+
+	if cfg.Client.Id == "secret" || cfg.Client.Secret == "secret" {
+		t.Skip("Zoom credentials are not configured")
+	}
+
+	c := NewZoomClient(cfg.Client)
+	assert.NotNil(t, c)
+
 	// Get token race condition
-	go func() {
-		token, err := c.GetToken()
-		assert.NoError(t, err)
-		assert.NotNil(t, token)
-	}()
+	for i := 0; i < 10; i++ {
+		go func() {
+			token, err := c.GetToken()
+			assert.NoError(t, err)
+			assert.NotNil(t, token)
+		}()
+	}
 
 	token, err := c.GetToken()
 	assert.NoError(t, err)
@@ -74,14 +109,15 @@ func Test_ZoomClient(t *testing.T) {
 
 	// Get token error condition
 	cfg.Client.Secret = "error"
-	c = NewZoomClient(cfg.Client)
-	assert.NotNil(t, c)
-	token, err = c.GetToken()
+	c1 := NewZoomClient(cfg.Client)
+	assert.NotNil(t, c1)
+	token1, err := c1.GetToken()
 	assert.Error(t, err)
-	assert.Nil(t, token)
+	assert.Nil(t, token1)
 	// t.Logf("Error: %v", err)
 }
 
+// Tests GetCloudStorageReport, shows the result in verbose mode
 func Test_CloudStorageReport(t *testing.T) {
 	cfgPath := "../config/config_cli.yml"
 
@@ -112,10 +148,6 @@ func Test_CloudStorageReport(t *testing.T) {
 	assert.NotNil(t, storageReport)
 
 	// Print storage report
-	log.Printf("[DEBUG] Storage report: %+v", prettyPrint(storageReport))
-}
-
-func prettyPrint(i interface{}) string {
-	s, _ := json.MarshalIndent(i, "", "\t")
-	return string(s)
+	s, _ := json.MarshalIndent(storageReport, "", "\t")
+	log.Printf("[DEBUG] Storage report: %+v", s)
 }

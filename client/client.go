@@ -40,6 +40,7 @@ func NewZoomClient(cfg config.Client) *ZoomClient {
 	return &ZoomClient{cfg: &cfg, client: client}
 }
 
+// Authorize - get access token
 func (z *ZoomClient) Authorize() error {
 	bearer := b64.StdEncoding.EncodeToString([]byte(z.cfg.Id + ":" + z.cfg.Secret))
 
@@ -63,7 +64,7 @@ func (z *ZoomClient) Authorize() error {
 	defer res.Body.Close()
 
 	if res.StatusCode != http.StatusOK {
-		return fmt.Errorf("unable to authorize with account id: %s and client id: %s, status %d, message: %s", z.cfg.AccountId, z.cfg.Id, res.StatusCode, res.Body)
+		return fmt.Errorf("unable to authorize with account id: %s and client id: %s, status %d", z.cfg.AccountId, z.cfg.Id, res.StatusCode)
 	}
 
 	if err := json.NewDecoder(res.Body).Decode(&z.token); err != nil {
@@ -81,6 +82,7 @@ func (z *ZoomClient) Authorize() error {
 	return nil
 }
 
+// GetToken - get token, if token is expired, re-authorize
 func (z *ZoomClient) GetToken() (*AccessToken, error) {
 	z.mx.Lock()
 	defer z.mx.Unlock()
@@ -165,8 +167,8 @@ func (z *ZoomClient) GetAllMeetings() ([]model.Meeting, error) {
 	var i, empty int
 	for {
 		i++
-		from := time.Now().AddDate(0, 0, -1*i*30)
-		to := time.Now().AddDate(0, 0, -1*(i-1)*30)
+		from := time.Now().AddDate(0, 0, -1*i*30)   // from 30 days ago,    60 days ago, etc.
+		to := time.Now().AddDate(0, 0, -1*(i-1)*30) //         to today, to 30 days ago, etc.
 		m, err := z.GetIntervalMeetings(from, to)
 		if err != nil {
 			return nil, errors.Join(fmt.Errorf("unable to get interval meetings"), err)
