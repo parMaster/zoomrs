@@ -16,7 +16,7 @@ Save thousands of dollars on Zoom Cloud Recording Storage! Download records auto
 - Run multiple instances of the service for redundancy
 
 ## Installation
-Zoomrs can be installed as a systemd service, run in foreground mode or in the docker container.
+Zoomrs can be installed as a systemd service or run from the console as a persistent process or a set of CLI tools. It can be run as a Docker container as well.
 
 ## Prerequisites
 ### Zoom API credentials
@@ -29,18 +29,23 @@ Add the following scopes to the App:
 - `/recording:write:admin`
 - `/report:read:admin`
 
-### Google OAuth credentials
+### Google OAuth credentials *(only if you want to host web frontend)*
 Google OAuth credentials are required to authenticate users. You can get them at https://console.cloud.google.com/apis/credentials. You need to create OAuth client ID and copy client ID and secret to the configuration file. Mind authorized redirect URIs - local domains are not allowed, so you need to use a public domain name or IP address.
 
-### Google OAuth authorized users
+### Google OAuth authorized users *(only if you want to host web frontend)*
 You need to specify the list of users that are allowed to access the web frontend. Their email addresses should be specified in the configuration file.
 
-
-
 ## Configuration
-See `config/config_example.yml` for example configuration file, available options and their descriptions. Copy it to `config/config.yml` and edit it to your liking.
+See `config/config_example.yml` for example configuration file, available options and their descriptions. Copy it to `config/config.yml` and edit it to your needs.
 
-### Foreground mode 
+## Running the service
+- To run a binary distribution, please refer to the [README](https://github.com/parMaster/zoomrs/dist/README.md) in `dist` directory.
+
+- To build from source, proceed with this manual.
+
+### Foreground mode
+*note: this is not recommended for production use, use systemd service instead*
+
 1. Clone the repository from GitHub
 
 		git clone https://github.com/parMaster/zoomrs.git
@@ -87,7 +92,7 @@ Share button is available for each recording, it generates a link to view the re
 #### GET `/watch/834d0992ad0d632cf6c3174b975cb5e5?uuid=kzbiTyvQQp2fW6biu8Vy%2BQ%3D%3D`
 Displays the page with the meeting title and player to watch the recording. Simple controls besides the embeded player is providing are available.
 
-### API
+## API
 
 #### GET `/status`
 Returns the status of the service and Zoom cloud storage usage stats. If the service is running, returns `200 OK` and the following JSON. Example response:

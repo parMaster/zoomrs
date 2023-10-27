@@ -2,6 +2,9 @@
 
 ### This is a binary distribution of Zoomrs project, a very brief description follows. For more information please refer to the [README](https://github.com/parmaster/zoomrs#readme) in main repository.
 
+## Download
+[RELEASES](https://github.com/parMaster/zoomrs/releases) page contains pre-built binaries for Linux, Windows and MacOS.
+
 ## Configuration
 Example self-documented configuration file `config.yml` included.
 
