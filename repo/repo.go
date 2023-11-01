@@ -212,7 +212,7 @@ func (r *Repository) DownloadJob(ctx context.Context) {
 
 // DownloadOnce gets a queued record and downloads it
 func (r *Repository) DownloadOnce() error {
-	queued, err := r.store.GetQueuedRecord()
+	_, err := r.store.GetQueuedRecord()
 	if err == storage.ErrNoRows {
 		log.Printf("[DEBUG] No queued records")
 		// retry 'failed' records and 'downloading' records - put them back to 'queued'
@@ -226,7 +226,7 @@ func (r *Repository) DownloadOnce() error {
 		return errors.Join(fmt.Errorf("failed to get queued records"), err)
 	}
 
-	queued, err = r.store.GetQueuedRecord()
+	queued, err := r.store.GetQueuedRecord()
 	if err != nil {
 		return errors.Join(fmt.Errorf("failed to get queued records"), err)
 	}
@@ -298,7 +298,10 @@ func (r *Repository) DownloadRecord(record *model.Record) error {
 	}
 
 	log.Printf("[DEBUG] Download saved to %s", resp.Filename)
-	r.store.UpdateRecord(record.Id, model.StatusDownloaded, resp.Filename)
+	if err := r.store.UpdateRecord(record.Id, model.StatusDownloaded, resp.Filename); err != nil {
+		return fmt.Errorf("failed to update record %s, %w", record.Id, err)
+	}
+
 	return nil
 }
 

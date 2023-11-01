@@ -127,6 +127,25 @@ func (s *Server) statusHandler(rw http.ResponseWriter, r *http.Request) {
 		"stats":  stats,
 	}
 
+	var lastDownloadedMeeting model.Meeting
+	cachedLast, err := s.cache.Get("lastDownloadedMeeting")
+	if err != nil {
+		log.Printf("[DEBUG] miss")
+
+		meetingsLoaded, err := s.store.ListMeetings()
+		if err != nil {
+			log.Printf("[ERROR] failed to list meetings, %v", err)
+			rw.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		lastDownloadedMeeting = meetingsLoaded[0]
+		s.cache.Set("lastDownloadedMeeting", lastDownloadedMeeting, 10*60)
+	} else {
+		log.Printf("[DEBUG] hit")
+		lastDownloadedMeeting = cachedLast.(model.Meeting)
+	}
+	resp["last_downloaded"] = lastDownloadedMeeting.DateTime
+
 	var cloudStorageReport *model.CloudRecordingReport
 	cachedCloud, err := s.cache.Get("cloudStorageReport")
 	if err != nil {

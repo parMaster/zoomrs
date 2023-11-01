@@ -39,7 +39,7 @@ type RateLimitingDelay struct {
 	Heavy  time.Duration
 }
 
-// unmarshal RateLimitingDaley fields to time.Duration
+// unmarshal RateLimitingDelay fields to time.Duration
 func (r *RateLimitingDelay) UnmarshalYAML(value *yaml.Node) error {
 	type tmp struct {
 		Light  int `yaml:"light"`
