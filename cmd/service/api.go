@@ -293,9 +293,11 @@ func (s *Server) watchMeetingHandler(rw http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) statsHandler(rw http.ResponseWriter, r *http.Request) {
-	divider := chi.URLParam(r, "divider")
-	divider = strings.ToUpper(divider)
-	d := []rune(divider)[0]
+	divider := strings.ToUpper(chi.URLParam(r, "divider"))
+	var d rune
+	if len(divider) > 0 {
+		d = []rune(divider)[0]
+	}
 
 	stats, err := s.repo.GetStats(d)
 	if err != nil {
