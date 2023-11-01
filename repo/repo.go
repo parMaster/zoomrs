@@ -265,12 +265,9 @@ func (r *Repository) DownloadRecord(record *model.Record) error {
 		return err
 	}
 
-	deleted, err := r.freeUpSpace()
+	_, err = r.freeUpSpace()
 	if err != nil {
 		log.Printf("[ERROR] failed to free up space, %v", err)
-	}
-	if deleted > 0 {
-		log.Printf("[INFO] Deleted %d old recordings to free up space", deleted)
 	}
 
 	url := record.DownloadURL + "?access_token=" + token.AccessToken
