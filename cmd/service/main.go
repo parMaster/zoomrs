@@ -140,7 +140,7 @@ func main() {
 	logOpts := []lgr.Option{
 		lgr.LevelBraces,
 		lgr.StackTraceOnError,
-		lgr.Secret(conf.Client.AccountId, conf.Client.Id, conf.Client.Secret),
+		lgr.Secret(conf.Client.AccountId, conf.Client.Id, conf.Client.Secret, conf.Server.OAuthClientId, conf.Server.OAuthClientSecret, conf.Server.JWTSecret),
 	}
 	if conf.Server.Dbg {
 		logOpts = append(logOpts, lgr.Debug)
