@@ -15,14 +15,14 @@ func (s *Commander) ShowUI() {
 	table.SetBorders(true)
 
 	var meetings []model.Meeting
-	for i := 0; i < 7; i++ {
-		m, err := s.client.GetMeetings(i)
-		if err != nil {
-			log.Printf("[ERROR] GetMeetings: %e", err)
-		}
-		meetings = append(meetings, m...)
-		time.Sleep(s.cfg.Client.RateLimitingDelay.Light) // avoid rate limit
+	from := time.Now().AddDate(0, 0, -1*7)
+	to := time.Now().AddDate(0, 0, 0)
+
+	m, err := s.client.GetIntervalMeetings(from, to)
+	if err != nil {
+		log.Printf("[ERROR] GetIntervalMeetings: %e", err)
 	}
+	meetings = append(meetings, m...)
 
 	table.SetCell(0, 0,
 		tview.NewTableCell("Topic").
