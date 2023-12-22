@@ -212,7 +212,7 @@ func (r *Repository) DownloadJob(ctx context.Context) {
 
 // DownloadOnce gets a queued record and downloads it
 func (r *Repository) DownloadOnce() error {
-	_, err := r.store.GetQueuedRecord()
+	queued, err := r.store.GetQueuedRecord()
 	if err == storage.ErrNoRows {
 		log.Printf("[DEBUG] No queued records")
 		// retry 'failed' records and 'downloading' records - put them back to 'queued'
@@ -222,11 +222,6 @@ func (r *Repository) DownloadOnce() error {
 		}
 		return ErrNoQueuedRecords
 	}
-	if err != nil {
-		return errors.Join(fmt.Errorf("failed to get queued records"), err)
-	}
-
-	queued, err := r.store.GetQueuedRecord()
 	if err != nil {
 		return errors.Join(fmt.Errorf("failed to get queued records"), err)
 	}
@@ -471,54 +466,50 @@ func (r *Repository) CheckConsistency() (checked int, result error) {
 	return
 }
 
-// freeUpSpace deletes downloaded files if there is less than cfg.Storage.KeepFreeSpace bytes free space
+// freeUpSpace deletes downloaded files if there is less than cfg.Storage.KeepFreeSpace bytes free
+// on the drive where cfg.Storage.Repository located
 func (r *Repository) freeUpSpace() (deleted int, result error) {
 	usage, err := disk.Usage(r.cfg.Storage.Repository)
 	if err != nil {
 		return 0, fmt.Errorf("failed to get disk usage: %w", err)
 	}
 	if usage.Free > uint64(r.cfg.Storage.KeepFreeSpace) {
-		log.Printf("[DEBUG] Free space is %d b (%d GB), no need to free up space (%d required)", usage.Free, usage.Free/1024/1024/1024, r.cfg.Storage.KeepFreeSpace)
+		log.Printf("[DEBUG]Free space Available/Required: %d/%d bytes (%s/ %s) no need to free up space.",
+			usage.Free,
+			r.cfg.Storage.KeepFreeSpace,
+			model.FileSize(usage.Free),
+			model.FileSize(r.cfg.Storage.KeepFreeSpace),
+		)
 		return 0, nil
 	}
-	log.Printf("[DEBUG] Free space Available/Required: %d b/ %d b (%d GB/ %d GB), delta = %d (bytes over the limit)", usage.Free, r.cfg.Storage.KeepFreeSpace, usage.Free/1024/1024/1024, r.cfg.Storage.KeepFreeSpace/1024/1024/1024, r.cfg.Storage.KeepFreeSpace-usage.Free)
+	log.Printf("[DEBUG] Free space Available/Required: %d/%d bytes (%s/ %s), %d bytes (%s) over the limit", usage.Free, r.cfg.Storage.KeepFreeSpace, model.FileSize(usage.Free), model.FileSize(r.cfg.Storage.KeepFreeSpace), r.cfg.Storage.KeepFreeSpace-usage.Free, model.FileSize(r.cfg.Storage.KeepFreeSpace-usage.Free))
 
-	meetings, err := r.store.GetMeetings()
+	recs, err := r.store.GetRecordsByStatus(model.StatusDownloaded)
 	if err != nil {
-		return 0, fmt.Errorf("failed to list meetings: %w", err)
+		return deleted, fmt.Errorf("failed to get downloaded records %w", err)
 	}
-
-	for im := len(meetings) - 1; im >= 0; im-- {
-		usage, err := disk.Usage(r.cfg.Storage.Repository)
+	for _, rec := range recs {
+		usage, err = disk.Usage(r.cfg.Storage.Repository)
 		if err != nil {
 			return deleted, fmt.Errorf("failed to get disk usage: %w", err)
 		}
 		if usage.Free > uint64(r.cfg.Storage.KeepFreeSpace) {
-			log.Printf("[INFO] Free space is %d b (%d GB), deleted %d records", usage.Free, usage.Free/1024/1024/1024, deleted)
+			log.Printf("[INFO] Free space is %d (%d bytes), deleted %d records", model.FileSize(usage.Free), usage.Free, deleted)
 			break
 		}
 
-		recs, err := r.store.GetRecords(meetings[im].UUID)
-		if err != nil {
-			return deleted, fmt.Errorf("failed to get records for meeting %s, %w", meetings[im].UUID, err)
+		recFolder := rec.Path(r.cfg.Storage.Repository)
+		if _, err := os.Stat(recFolder); err != nil {
+			log.Printf("[ERROR] %s does not exist, skipping", recFolder)
+			continue
 		}
-		for ir := range recs {
-			if recs[ir].Status != model.StatusDownloaded || len(recs[ir].Id) == 0 {
-				continue // skip records that are not downloaded or have no Id somehow
-			}
-			recFolder := fmt.Sprintf("%s/%s/%s", r.cfg.Storage.Repository, recs[ir].DateTime[:10], recs[ir].Id)
-			if _, err := os.Stat(recFolder); err != nil {
-				log.Printf("[ERROR] %s does not exist, skipping", recFolder)
-				continue
-			}
-			if err := os.RemoveAll(recFolder); err != nil {
-				log.Printf("[DEBUG] Failed to delete %s, %v", recFolder, err)
-				errors.Join(result, fmt.Errorf("failed to delete %s, %v; ", recFolder, err))
-			} else {
-				deleted++
-				log.Printf("[DEBUG] Deleted %s", recFolder)
-				r.store.UpdateRecord(recs[ir].Id, model.StatusDeleted, "")
-			}
+		if err := os.RemoveAll(recFolder); err != nil {
+			log.Printf("[DEBUG] Failed to delete %s, %v", recFolder, err)
+			errors.Join(result, fmt.Errorf("failed to delete %s, %v; ", recFolder, err))
+		} else {
+			deleted++
+			log.Printf("[DEBUG] Deleted %s", recFolder)
+			r.store.UpdateRecord(rec.Id, model.StatusDeleted, "")
 		}
 	}
 	return

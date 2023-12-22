@@ -68,6 +68,12 @@ type Record struct {
 	FilePath      string       `json:"file_path"` // local file path
 }
 
+// returns absolute path to the folder with the recording.
+// cfg.Storage.KeepFreeSpace can be passed as a parameter
+func (r Record) Path(repositoryRoot string) string {
+	return fmt.Sprintf("%s/%s/%s", repositoryRoot, r.DateTime[:10], r.Id)
+}
+
 // CloudRecordingReport describes the cloud recording report
 type CloudRecordingReport struct {
 	From                  string                  `json:"from"`

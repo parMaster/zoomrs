@@ -249,7 +249,7 @@ func (s *SQLiteStorage) GetQueuedRecord() (*model.Record, error) {
 
 // GetRecords returns records from the database
 func (s *SQLiteStorage) GetRecordsByStatus(status model.RecordStatus) ([]model.Record, error) {
-	q := "SELECT * FROM `records` WHERE status = $1"
+	q := "SELECT * FROM `records` WHERE status = $1 ORDER BY startTime"
 	rows, err := s.DB.QueryContext(s.ctx, q, status)
 	if err != nil {
 		return nil, err

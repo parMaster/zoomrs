@@ -74,7 +74,7 @@ func (s *Commander) Run(opts Options) {
 		log.Printf("[INFO] starting SyncJob")
 
 		if len(r.Syncable.Important)+len(r.Syncable.Alternative)+len(r.Syncable.Optional) == 0 {
-			log.Printf("[DEBUG] No sync types configured. Sync job will not run")
+			log.Printf("[INFO] No sync types configured. Sync job will not run")
 			return
 		}
 		for {
