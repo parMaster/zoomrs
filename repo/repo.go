@@ -498,7 +498,7 @@ func (r *Repository) freeUpSpace() (deleted int, result error) {
 			break
 		}
 
-		recFolder := rec.Path(r.cfg.Storage.Repository)
+		recFolder, dateFolder := rec.Paths(r.cfg.Storage.Repository)
 		if _, err := os.Stat(recFolder); err != nil {
 			log.Printf("[ERROR] %s does not exist, skipping", recFolder)
 			continue
@@ -511,6 +511,20 @@ func (r *Repository) freeUpSpace() (deleted int, result error) {
 			log.Printf("[DEBUG] Deleted %s", recFolder)
 			r.store.UpdateRecord(rec.Id, model.StatusDeleted, "")
 		}
+
+		// if dateFolder is empty, delete it
+		if files, err := os.ReadDir(dateFolder); err != nil {
+			log.Printf("[ERROR] Failed to read %s, %v", dateFolder, err)
+		} else {
+			if len(files) == 0 {
+				if err := os.Remove(dateFolder); err != nil {
+					log.Printf("[ERROR] Failed to delete %s, %v", dateFolder, err)
+				} else {
+					log.Printf("[DEBUG] Deleted %s", dateFolder)
+				}
+			}
+		}
+
 	}
 	return
 }
