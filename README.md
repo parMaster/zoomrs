@@ -240,9 +240,9 @@ Available commands:
 - `check` - checks the consistency of the repository: if all recordings are downloaded and if all downloaded recordings are present on the disk, also the size of each recording file is checked. Run this command periodically to make sure everything is OK. 
 Run it like this:
 
-	```sh
-	./dist/zoomrs-cli --cmd check
-	```
+```sh
+./dist/zoomrs-cli --cmd check
+```
 	Example output:
 	```
 	2023/06/19 17:15:01 [INFO]  starting CheckConsistency
@@ -251,34 +251,35 @@ Run it like this:
 	```
 - `trash` - trashes recordings from Zoom Cloud. Run it like this:
 
-	```sh
-	./zoomrs-cli --dbg --cmd trash --trash 2
-	```
+```sh
+./zoomrs-cli --dbg --cmd trash --trash 2
+```
 
 	where `2` is 2 days before today, so all the recordings from the bay before yesterday will be trashed. This is designed this way to run it as a cron job every day. Cron job line example:
-	```sh
-	00 10 * * * cd $HOME/go/src/zoomrs/dist && ./zoomrs-cli --cmd trash --trash 2 --config ../config/config_cli.yml >> /var/log/cron.log 2>&1
-	```
+```sh
+00 10 * * * cd $HOME/go/src/zoomrs/dist && ./zoomrs-cli --cmd trash --trash 2 --config ../config/config_cli.yml >> /var/log/cron.log 2>&1
+```
 
 	will trash all recordings from the day before yesterday every day at 10:00 AM. `--config` option is used to specify the path to the configuration file. `--dbg` option can be used to enable debug logging. Logs are written to stdout, and redirected to `/var/log/cron.log` in the example above.
 
 - `cloudcap` - trims recordings from Zoom Cloud to avoid exceeding the storage limit. Leaves `Client.CloudCapacityHardLimit` bytes of the most recent recordings (review the value in config before running!), trashes the rest. Cron job line to run it every day at 5:30 AM (don't mind the paths, they are specific to my setup, use your own):
-	```sh
-	30 05 * * * cd $HOME/go/src/zoomrs/dist && ./zoomrs-cli --dbg --cmd cloudcap --config ../config/config_cli.yml >> /var/log/cron.log 2>&1
-	```
+```sh
+30 05 * * * cd $HOME/go/src/zoomrs/dist && ./zoomrs-cli --dbg --cmd cloudcap --config ../config/config_cli.yml >> /var/log/cron.log 2>&1
+```
 - `sync` - syncs recordings from Zoom Cloud. Run it like this:
-	```sh
-	./zoomrs-cli --dbg --cmd sync --days 1
-	```
+```sh
+./zoomrs-cli --dbg --cmd sync --days 1
+```
 
 	`--days` parameter used with the value of `1` to sync all the yesterday recordings (1 day before today). This is designed this way to run it as a cron job. Cron job line example:
-	```sh
-	00 03 * * * cd $HOME/go/src/zoomrs/dist && ./zoomrs-cli --cmd sync --days 1 --config ../config/config_cli.yml >> /var/log/zoomrs.cron.log 2>&1
-	```
+```sh
+00 03 * * * cd $HOME/go/src/zoomrs/dist && ./zoomrs-cli --cmd sync --days 1 --config ../config/config_cli.yml >> /var/log/zoomrs.cron.log 2>&1
+```
 
-	will sync all recordings from the yesterday every day at 3:00 AM. `--config` option is used to specify the path to the configuration file. `--dbg` option can be used to enable debug logging. Logs are written to stdout, and redirected to `/var/log/cron.log` in the example above.
+will sync all recordings from the yesterday every day at 3:00 AM. `--config` option is used to specify the path to the configuration file. `--dbg` option can be used to enable debug logging. Logs are written to stdout, and redirected to `/var/log/cron.log` in the example above.
 
-> [!NOTE] Using multiple credentials
+
+> [!NOTE] 
 > CLI tool uses different configuration file then the server with different Zoom API credentials to avoid spoiling services's auth token when running CLI. Also, running multi-server setup you want to sync recordings only after all servers have downloaded them, so you need to run CLI tool on one of the servers, allow syncing records in CLI config and deny it in servers configs.
 
 ## Running multiple instances
@@ -289,14 +290,18 @@ You can run multiple instances of the service to increase reliability, duplicate
 	- Run the service with `server.sync_job: false` and `server.download_job: false` so it will just host the API. Run downloader with cron job (see `sync` cmd crontab line example in the previous section). This way you can set the time to run the download job
 3. Run cleanup job on one of the instances (see `trash` cmd crontab line example in the previous section). Use configuration file that enumerates all the instances in `server.instances` section. This way cleanup job will check all the instances for consistency and trash/delete recordings from Zoom Cloud only if all the instances have downloaded them. Disable deleting and trashing downloaded recordings (`client.trash_downloaded: false` and `client.delete_downloaded: false` in the configuration file) on every other instance but this one.
 
-> [!NOTE] Copy yesterday's recordings from "Main" instance to "Secondary" instance
-Secondary instance can run something like this to copy yesterday's recordings from "Main" instance:
+> [!NOTE]
+> Copy yesterday's recordings from "Main" instance to "Secondary" instance
+> Secondary instance can run something like this to copy yesterday's recordings from "Main" instance:
+
 ```sh
 sleep 1s && date && scp -r server.local:/data/`date --date="yesterday" +%Y-%m-%d` /data/ && date
 ```
 
-> [!NOTE]  Database backup
-Backup database file regularly to prevent data loss. See example shell script at `dist/backup_db.sh`. It can be run as a cron job like this:
+> [!NOTE]
+> Database backup
+> Backup database file regularly to prevent data loss. See example shell script at `dist/backup_db.sh`. It can be run as a cron job like this:
+
 ```sh
 0 10 * * * sh $HOME/go/src/zoomrs/backup_db.sh
 ```
