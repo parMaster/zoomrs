@@ -59,6 +59,12 @@ cli:
 	go build -o dist/zoomrs-cli -v ./cmd/cli
 	./dist/zoomrs-cli --config ./config/config_cli.yml
 
+# Prepare a release:
+# git tag v1.2
+# git push origin v1.2
+# Make sure no secrets exposed in configs, .service file etc.
+# Then run:
+# make release
 release:
 	@echo release to dist/release
 	mkdir -p dist/release
