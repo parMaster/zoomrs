@@ -90,8 +90,7 @@ func (r *Repository) SyncJob(ctx context.Context) {
 		}
 		log.Printf("[DEBUG] Syncing meetings - %d in feed", len(meetings))
 
-		err = r.SyncMeetings(&meetings)
-		if err != nil {
+		if err = r.SyncMeetings(&meetings); err != nil {
 			log.Printf("[ERROR] failed to sync meetings, %v, retrying in 30 sec", err)
 			time.Sleep(30 * time.Second)
 			continue
@@ -254,14 +253,12 @@ func (r *Repository) DownloadRecord(record *model.Record) error {
 	}
 	r.store.UpdateRecord(record.Id, model.StatusDownloading, "")
 
-	path := r.cfg.Storage.Repository + "/" + record.DateTime[:10] + "/" + record.Id
-	err = r.prepareDestination(path)
-	if err != nil {
+	path, _ := record.Paths(r.cfg.Storage.Repository)
+	if err = r.prepareDestination(path); err != nil {
 		return err
 	}
 
-	_, err = r.freeUpSpace()
-	if err != nil {
+	if _, err = r.freeUpSpace(); err != nil {
 		log.Printf("[ERROR] failed to free up space, %v", err)
 	}
 
@@ -300,8 +297,7 @@ func (r *Repository) DownloadRecord(record *model.Record) error {
 // PrepareDestination creates directory for the downloaded file
 func (r *Repository) prepareDestination(path string) error {
 	if _, err := os.Stat(path); os.IsNotExist(err) {
-		err := os.MkdirAll(path, os.ModePerm)
-		if err != nil {
+		if err := os.MkdirAll(path, os.ModePerm); err != nil {
 			return err
 		}
 	}

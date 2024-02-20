@@ -2,6 +2,7 @@ package webauth
 
 import (
 	"crypto/sha1"
+	"slices"
 	"time"
 
 	"github.com/go-pkgz/auth"
@@ -26,12 +27,7 @@ func NewAuthService(cfg config.Server) (*auth.Service, error) {
 		AvatarResizeLimit: 200,
 		Validator: token.ValidatorFunc(func(_ string, claims token.Claims) bool {
 			// allow access to managers
-			for _, m := range cfg.Managers {
-				if claims.User.Email == m {
-					return true
-				}
-			}
-			return false
+			return slices.Contains(cfg.Managers, claims.User.Email)
 		}),
 		ClaimsUpd: token.ClaimsUpdFunc(func(claims token.Claims) token.Claims { // modify issued token
 			return claims
