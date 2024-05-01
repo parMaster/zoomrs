@@ -34,17 +34,7 @@ func (s *Server) router() http.Handler {
 	m := s.authService.Middleware()
 	router.With(m.Auth).Get("/listMeetings", s.listMeetingsHandler)
 
-	router.With(m.Trace).Get("/", func(rw http.ResponseWriter, r *http.Request) {
-		// Check if user logged in
-		userInfo, err := token.GetUserInfo(r)
-		log.Printf("[DEBUG] userInfo: %+v", userInfo)
-		log.Printf("[DEBUG] err: %+v", err)
-		if err != nil || userInfo.Attributes["email"] == "" {
-			http.Redirect(rw, r, "/login", http.StatusFound)
-			return
-		}
-		s.responseWithFile("web/index.html", rw)
-	})
+	router.With(m.Trace).Get("/", s.indexPageHandler)
 
 	router.With(m.Auth).Route("/stats", func(r chi.Router) {
 		r.Get("/{divider}", s.statsHandler)
@@ -57,24 +47,17 @@ func (s *Server) router() http.Handler {
 
 	// Public routes
 	router.Get("/status", s.statusHandler)
-	router.Get("/watchMeeting/{accessKey}", s.watchMeetingHandler)
 
-	router.Get("/watch/{accessKey}", func(rw http.ResponseWriter, r *http.Request) {
-		accessKey := chi.URLParam(r, "accessKey")
-		if accessKey == "" {
-			rw.WriteHeader(http.StatusBadRequest)
-			return
-		}
-		s.responseWithFile("web/watch.html", rw)
-	})
+	router.Get("/watchMeeting/{accessKey}", s.watchMeetingHandler)
+	router.Get("/watch/{accessKey}", s.watchHandler)
 
 	router.Get("/login", func(rw http.ResponseWriter, r *http.Request) {
-		s.responseWithFile("web/auth.html", rw)
+		s.respondWithFile("web/auth.html", rw)
 	})
 
 	router.Get("/favicon.ico", func(rw http.ResponseWriter, r *http.Request) {
 		rw.Header().Set("Content-Type", "image/x-icon")
-		s.responseWithFile("web/favicon.ico", rw)
+		s.respondWithFile("web/favicon.ico", rw)
 	})
 
 	fs := http.FileServer(http.Dir(s.cfg.Storage.Repository))
@@ -83,7 +66,30 @@ func (s *Server) router() http.Handler {
 	return router
 }
 
-func (s *Server) responseWithFile(file string, rw http.ResponseWriter) error {
+// indexPageHandler serves / path (web/index.html)
+func (s *Server) indexPageHandler(rw http.ResponseWriter, r *http.Request) {
+	// Check if user logged in
+	userInfo, err := token.GetUserInfo(r)
+	log.Printf("[DEBUG] userInfo: %+v", userInfo)
+	log.Printf("[DEBUG] err: %+v", err)
+	if err != nil || userInfo.Attributes["email"] == "" {
+		http.Redirect(rw, r, "/login", http.StatusFound)
+		return
+	}
+	s.respondWithFile("web/index.html", rw)
+}
+
+// watchHandler serves /watchHandler/{accessKey} path (web/watchHandler.html)
+func (s *Server) watchHandler(rw http.ResponseWriter, r *http.Request) {
+	accessKey := chi.URLParam(r, "accessKey")
+	if accessKey == "" {
+		rw.WriteHeader(http.StatusBadRequest)
+		return
+	}
+	s.respondWithFile("web/watch.html", rw)
+}
+
+func (s *Server) respondWithFile(file string, rw http.ResponseWriter) error {
 	var html []byte
 	var err error
 	if s.cfg.Server.Dbg {
@@ -221,7 +227,7 @@ func (s *Server) listMeetingsHandler(rw http.ResponseWriter, r *http.Request) {
 	// mix in an accessKey for each meeting to be used in watchMeeting
 	for i := range m {
 
-		s := m[i].UUID + s.cfg.Server.AccessKeySalt
+		s := fmt.Sprintf("%s%s", m[i].UUID, s.cfg.Server.AccessKeySalt)
 		h := md5.New()
 		io.WriteString(h, s)
 		m[i].AccessKey = fmt.Sprintf("%x", h.Sum(nil))
@@ -343,7 +349,10 @@ func (s *Server) meetingsLoadedHandler(rw http.ResponseWriter, r *http.Request) 
 		Meetings []string `json:"meetings"`
 	}
 	var uuids req
-	err := json.NewDecoder(r.Body).Decode(&uuids)
+	r.Body = http.MaxBytesReader(rw, r.Body, int64(1<<22)) // 4MB
+	decoder := json.NewDecoder(r.Body)
+	decoder.DisallowUnknownFields()
+	err := decoder.Decode(&uuids)
 	if err != nil {
 		log.Printf("[ERROR] failed to decode request body, %v", err)
 		rw.WriteHeader(http.StatusInternalServerError)

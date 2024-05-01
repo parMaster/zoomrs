@@ -234,7 +234,7 @@ func (r *Repository) DownloadOnce() error {
 			return errors.Join(fmt.Errorf("download returned error %s", queued.Id), downErr)
 		}
 
-		if downErr == nil && r.meetingRecordsLoaded(queued.MeetingId) && (r.cfg.Client.DeleteDownloaded || r.cfg.Client.TrashDownloaded) {
+		if r.meetingRecordsLoaded(queued.MeetingId) && (r.cfg.Client.DeleteDownloaded || r.cfg.Client.TrashDownloaded) {
 			err := r.client.DeleteMeetingRecordings(queued.MeetingId, r.cfg.Client.DeleteDownloaded)
 			if err != nil {
 				return errors.Join(fmt.Errorf("failed to delete meeting %s", queued.MeetingId), err)
@@ -262,7 +262,7 @@ func (r *Repository) DownloadRecord(record *model.Record) error {
 		log.Printf("[ERROR] failed to free up space, %v", err)
 	}
 
-	url := record.DownloadURL + "?access_token=" + token.AccessToken
+	url := fmt.Sprintf("%s?access_token=%s", record.DownloadURL, token.AccessToken)
 	resp, err := grab.Get(path, url)
 	if err != nil {
 		r.store.UpdateRecord(record.Id, model.StatusFailed, "")
@@ -404,7 +404,8 @@ func (r *Repository) requestMeetingsLoaded(meetings []string) (loaded bool, err 
 	}
 
 	for _, instance := range r.cfg.Commander.Instances {
-		resp, err := http.Post(instance+"/meetingsLoaded/"+r.cfg.Server.AccessKeySalt, "application/json", bytes.NewBuffer(body))
+		url := fmt.Sprintf("%s/meetingsLoaded/%s", instance, r.cfg.Server.AccessKeySalt)
+		resp, err := http.Post(url, "application/json", bytes.NewBuffer(body))
 		if err != nil {
 			return false, fmt.Errorf("failed to post meetingsLoaded to %s, %v", instance, err)
 		}
