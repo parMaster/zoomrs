@@ -27,8 +27,8 @@ client:
     heavy: 1050 # Free acc: 1 r/s; Pro: 10 r/s; Business: 40 r/s
 storage:
   type: sqlite # sqlite is fast enough, embedded, simple and reliable
-  path: file:/tmp/zoomrs_test_data.db?mode=rwc&_journal_mode=WAL
-  repository: /tmp # Path to download files
+  path: file:/tmp/zoomrs_test_data.db?mode=rwc&_journal_mode=WAL # path to the database file. Remember to properly map this path running in Docker
+  repository: /tmp # Path to download files. Remember to properly map this path running in Docker
 # Keep at least this much free space on disk (where the storage.repository is located). Evict old recordings from the repository until this condition satisfied.
   keep_free_space: 107374182400 # bytes (100 GB)
 syncable:
