@@ -19,9 +19,6 @@ RUN adduser \
 ADD . /build
 WORKDIR /build
 
-# Install git
-RUN apt-get install -y git
-
 # Build the application with the vendor dependencies and the cache
 RUN --mount=type=cache,target="/root/.cache/go-build" make
 
