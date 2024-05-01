@@ -35,9 +35,8 @@ COPY --from=base /etc/group /etc/group
 
 # Copy the binary and the configuration file from the base image
 COPY --from=base /build/zoomrs .
-# RUN mkdir -p /app/config
 # copy the configuration file or docker run with -v ./config/config.yml:/app/config/config.yml
-# COPY --from=base /build/config/config.yml ./config/
+# COPY --from=base /build/config/config.yml ./
 
 # Change the ownership of the binary and the configuration file
 RUN chown -R api-user:api-user /app
