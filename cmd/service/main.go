@@ -107,9 +107,12 @@ func (s *Server) startServer(ctx context.Context) {
 }
 
 type Options struct {
-	Config string `long:"config" env:"CONFIG" default:"config.yml" description:"yaml config file name"`
-	Dbg    bool   `long:"dbg" env:"DEBUG" description:"show debug info"`
+	Config  string `long:"config" env:"CONFIG" default:"config.yml" description:"yaml config file name"`
+	Dbg     bool   `long:"dbg" env:"DEBUG" description:"show debug info"`
+	Version bool   `short:"v" description:"Show version and exit"`
 }
+
+var version = "undefined" // version is set during build
 
 func main() {
 	// Parsing cmd parameters
@@ -123,6 +126,13 @@ func main() {
 		p.WriteHelp(os.Stderr)
 		os.Exit(2)
 	}
+
+	// Version
+	if opts.Version {
+		fmt.Printf("Version: %s\n", version)
+		os.Exit(0)
+	}
+	log.Printf("[DEBUG] Pid: %d, ver: %s", os.Getpid(), version)
 
 	var conf *config.Parameters
 	if opts.Config != "" {

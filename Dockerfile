@@ -19,8 +19,11 @@ RUN adduser \
 ADD . /build
 WORKDIR /build
 
+# Install git
+RUN apt-get install -y git
+
 # Build the application with the vendor dependencies and the cache
-RUN --mount=type=cache,target="/root/.cache/go-build" CGO_ENABLED=1 GOOS=linux GOARCH=amd64 go build -mod=vendor -v -o zoomrs ./cmd/service
+RUN --mount=type=cache,target="/root/.cache/go-build" make
 
 # Production stage
 # Not using scratch because of the CGO_ENABLED=1
@@ -34,7 +37,7 @@ COPY --from=base /etc/passwd /etc/passwd
 COPY --from=base /etc/group /etc/group
 
 # Copy the binary and the configuration file from the base image
-COPY --from=base /build/zoomrs .
+COPY --from=base /build/dist/zoomrs .
 # copy the configuration file or docker run with -v ./config/config.yml:/app/config/config.yml
 # COPY --from=base /build/config/config.yml ./
 

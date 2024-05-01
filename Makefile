@@ -10,12 +10,12 @@ GROUP=$(shell id -gn)
 
 .DEFAULT_GOAL: build
 
-build:
+build: info
 	make buildsvc
 	make buildcli
 
 buildsvc:
-	go build -o dist/zoomrs -v ./cmd/service
+	go build -o dist/zoomrs -v --ldflags="-X main.version=$(REV)" ./cmd/service
 
 buildcli:
 	go build -o dist/zoomrs-cli -v ./cmd/cli
@@ -26,7 +26,7 @@ info:
 test:
 	go test ./...
 
-run:
+run: build
 	go run ./cmd/service --config ./config/config.yml
 
 dbg:
