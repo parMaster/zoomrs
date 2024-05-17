@@ -31,7 +31,7 @@
 			</div>
 		</div>
 		<div class="row">
-			<div class="col-md-10">
+			<div class="col-md-7">
 				<table>
 					<tbody>
 						<tr>
@@ -47,6 +47,13 @@
 						</tr>
 					</tbody>
 				</table>
+			</div>
+			<div class="col-md-3">
+				<div class="d-flex justify-content-end">
+					<a name="download_button" href="#" class="btn btn-sm btn-primary" download="#" target="_blank">⤓ Download Video File</a>
+				</div>
+			</div>
+			<div class="col-md-2">
 			</div>
 		</div>
 	</div>
@@ -83,16 +90,32 @@
 					$("#meetingId").text(data.meeting.id.toString().replace(/(\d{3})(\d{4})(\d{4})/, "$1 $2 $3"));
 					// Set the meeting date and time
 					$("#dateTime").text(data.meeting.date_time);
-					// loop through the data.records and find one with recording_type "shared_screen_with_gallery_view"
-					// and use data.records[i].file_path to set the source of the player
+					// loop through the data.records and find one with recording_type "shared_screen_with_gallery_view" or "shared_screen_with_speaker_view"
 					for (var i = 0; i < data.records.length; i++) {
 						if ((data.records[i].recording_type == "shared_screen_with_gallery_view") || (data.records[i].recording_type == "shared_screen_with_speaker_view")) {
+
+							// Use data.records[i].file_path to set the source of the player
 							$("#player").html('<video id="videoPlayer" style="width:100%" controls><source src="'+window.location.origin+'/' + data.records[i].file_path + '" type="video/mp4"></video>');
+
+							// Set the download button href and download attribute
+							$("a[name='download_button']").attr("href", window.location.origin + "/" + data.records[i].file_path);
+							$("a[name='download_button']").attr("download", data.meeting.topic + ".mp4");
 							break;
 						}
 					}
 				}
 			}
+		});
+
+		// disable download_button for 5 seconds on click to prevent multiple clicks
+		$("a[name='download_button']").click(function (event) {
+			if ($(this).hasClass("disabled")) {
+				event.preventDefault();
+			}
+			$(this).addClass("disabled");
+			setTimeout(function() {
+				$("a[name='download_button']").removeClass("disabled");
+			}, 5000);
 		});
 
 		// activate the chosen speed button
