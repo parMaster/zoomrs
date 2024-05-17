@@ -15,13 +15,15 @@
 </head>
 <body>
 	
-	<div class="container" style="width:100%; margin:10px">
-		<div class="row">
-			<div class="col-md-12">
-				<h1>Please Login</h1>
-				<p>Please login with your Google account</p>
-				<a href="#" class="btn btn-primary">Login with Google</a>
-				<p class="text-muted mt-2"></p>
+	<div class="container d-flex justify-content-center align-items-center vh-100">
+		<div class="card">
+			<h5 class="card-header">Sign in</h5>
+			<div class="card-body">
+				<p class="card-text">Please login with your Google account</p>
+				<div class="text-end">
+					<a href="#" class="btn btn-primary">Login with Google</a>
+				</div>
+				<div hidden class="alert alert-danger mt-4" role="alert"></div>
 			</div>
 		</div>
 	</div>
@@ -32,22 +34,15 @@
 			$(".btn-primary").attr("href", "/auth/google/login?from=" + encodeURIComponent(window.location.origin));
 
 			// get user info from /auth/user
-			// if email is not empty, redirect to /
 			$.ajax({
 				url: "/auth/user",
 				type: "GET",
 				dataType: "json",
 				success: function(data) {
 					if (data.email) {
-						// Redirect to /
-						$(".text-muted").text("You are not logged in as "+data.email)
-						// sleep for a second
-						setTimeout(function() {
-							window.location.href = "/";
-						}, 1000);
-					} else {
-						// Show login button
-						$(".btn-primary").show();
+						// Show alert
+						$(".alert").text("You are not logged in as "+data.email)
+						$(".alert").removeAttr("hidden");
 					}
 				},
 				error: function(jqXHR, textStatus, errorThrown) {
