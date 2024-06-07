@@ -85,15 +85,24 @@ func (r *Repository) SyncJob(ctx context.Context) {
 		meetings, err := r.client.GetMeetings(1)
 		if err != nil {
 			log.Printf("[ERROR] failed to get meetings, %v, retrying in 30 sec", err)
-			time.Sleep(30 * time.Second)
-			continue
+
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(30 * time.Second):
+				continue
+			}
 		}
 		log.Printf("[DEBUG] Syncing meetings - %d in feed", len(meetings))
 
 		if err = r.SyncMeetings(&meetings); err != nil {
 			log.Printf("[ERROR] failed to sync meetings, %v, retrying in 30 sec", err)
-			time.Sleep(30 * time.Second)
-			continue
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(30 * time.Second):
+				continue
+			}
 		}
 
 		select {
@@ -228,7 +237,7 @@ func (r *Repository) DownloadOnce() error {
 	// download the record
 	if queued != nil {
 		log.Printf("[DEBUG] ↓ %d MB | %s record %s meetingId %s", queued.FileSize/1024/1024, queued.Type, queued.Id, queued.MeetingId)
-		log.Printf("[INFO] ↓ %d MB | %s", queued.FileSize/1024/1024, queued.Id)
+		log.Printf("[INFO] ↓ %d MB | %s | %s", queued.FileSize/1024/1024, queued.Id, queued.DateTime)
 		downErr := r.DownloadRecord(queued)
 		if downErr != nil {
 			return errors.Join(fmt.Errorf("download returned error %s", queued.Id), downErr)
@@ -355,7 +364,11 @@ func (r *Repository) CleanupJob(ctx context.Context, daysAgo int) {
 					return
 				}
 				log.Printf("[INFO] (%d) retrying after 1 minute", retry)
-				time.Sleep(time.Minute)
+				select {
+				case <-ctx.Done():
+					return
+				case <-time.After(1 * time.Minute):
+				}
 			}
 			continue
 		}
