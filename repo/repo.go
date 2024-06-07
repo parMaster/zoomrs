@@ -336,8 +336,12 @@ func (r *Repository) CleanupJob(ctx context.Context, daysAgo int) {
 		meetings, err := r.client.GetMeetings(daysAgo)
 		if err != nil {
 			log.Printf("[ERROR] failed to get meetings, %v", err)
-			time.Sleep(1 * time.Minute)
-			continue
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(1 * time.Minute):
+				continue
+			}
 		}
 		log.Printf("[INFO] Cleaning up meetings - %d in feed", len(meetings))
 		if len(meetings) == 0 {

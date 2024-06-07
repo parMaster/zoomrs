@@ -87,16 +87,24 @@ func (s *Commander) Run(opts Options) {
 			meetings, err := s.client.GetMeetings(opts.Days)
 			if err != nil {
 				log.Printf("[ERROR] failed to get meetings, %v, retrying in 30 sec", err)
-				time.Sleep(30 * time.Second)
-				continue
+				select {
+				case <-s.ctx.Done():
+					return
+				case <-time.After(30 * time.Second):
+					continue
+				}
 			}
 			log.Printf("[DEBUG] Syncing meetings - %d in feed", len(meetings))
 
 			err = r.SyncMeetings(&meetings)
 			if err != nil {
 				log.Printf("[ERROR] failed to sync meetings, %v, retrying in 30 sec", err)
-				time.Sleep(30 * time.Second)
-				continue
+				select {
+				case <-s.ctx.Done():
+					return
+				case <-time.After(30 * time.Second):
+					continue
+				}
 			}
 			break
 		}
@@ -120,8 +128,12 @@ func (s *Commander) Run(opts Options) {
 			if err != nil {
 				log.Printf("[ERROR] failed to download meetings, %v, retrying in 30 sec", err)
 				lastError = err
-				time.Sleep(30 * time.Second)
-				continue
+				select {
+				case <-s.ctx.Done():
+					return
+				case <-time.After(30 * time.Second):
+					continue
+				}
 			}
 		}
 	default:
