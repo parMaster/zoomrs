@@ -30,13 +30,12 @@ type Server struct {
 	cfg         *config.Parameters
 	client      *client.ZoomClient
 	store       storage.Storer
-	ctx         context.Context
 	authService *auth.Service
 	repo        *repo.Repository
 	cache       mcache.Cacher
 }
 
-func NewServer(conf *config.Parameters, ctx context.Context) *Server {
+func NewServer(conf *config.Parameters) *Server {
 	client := client.NewZoomClient(conf.Client)
 	authService, err := webauth.NewAuthService(conf.Server)
 	if err != nil {
@@ -44,7 +43,7 @@ func NewServer(conf *config.Parameters, ctx context.Context) *Server {
 	}
 	cache := mcache.NewCache()
 
-	return &Server{cfg: conf, client: client, ctx: ctx, authService: authService, cache: cache}
+	return &Server{cfg: conf, client: client, authService: authService, cache: cache}
 }
 
 func LoadStorage(ctx context.Context, cfg config.Storage, s *storage.Storer) error {
@@ -63,9 +62,9 @@ func LoadStorage(ctx context.Context, cfg config.Storage, s *storage.Storer) err
 	return err
 }
 
-func (s *Server) Run() {
+func (s *Server) Run(ctx context.Context) {
 
-	err := LoadStorage(s.ctx, s.cfg.Storage, &s.store)
+	err := LoadStorage(ctx, s.cfg.Storage, &s.store)
 	if err != nil {
 		log.Fatalf("[ERROR] failed to init storage: %e", err)
 	}
@@ -73,18 +72,18 @@ func (s *Server) Run() {
 	s.repo = repo.NewRepository(s.store, s.client, s.cfg)
 
 	log.Printf("[INFO] starting server at %s", s.cfg.Server.Listen)
-	go s.startServer(s.ctx)
+	go s.startServer(ctx)
 
 	if s.cfg.Server.SyncJob {
 		log.Printf("[INFO] starting sync job")
-		go s.repo.SyncJob(s.ctx)
+		go s.repo.SyncJob(ctx)
 	}
 	if s.cfg.Server.DownloadJob {
 		log.Printf("[INFO] starting download job")
-		go s.repo.DownloadJob(s.ctx)
+		go s.repo.DownloadJob(ctx)
 	}
 
-	<-s.ctx.Done()
+	<-ctx.Done()
 }
 
 func (s *Server) startServer(ctx context.Context) {
@@ -174,5 +173,5 @@ func main() {
 		}
 	}()
 
-	NewServer(conf, ctx).Run()
+	NewServer(conf).Run(ctx)
 }
