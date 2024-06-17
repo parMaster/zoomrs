@@ -23,21 +23,23 @@ type Commander struct {
 	cfg    *config.Parameters
 	client *client.ZoomClient
 	store  storage.Storer
-	ctx    context.Context
-	cancel context.CancelFunc
 }
 
-func NewCommander(conf *config.Parameters, ctx context.Context, cancel context.CancelFunc) *Commander {
+func NewCommander(conf *config.Parameters) *Commander {
 	client := client.NewZoomClient(conf.Client)
-	return &Commander{cfg: conf, client: client, ctx: ctx, cancel: cancel}
+	return &Commander{cfg: conf, client: client}
 }
 
-func (s *Commander) Run(opts Options) {
+func (s *Commander) Run(ctx context.Context, opts Options) error {
 	log.Printf("[INFO] starting cli commander")
 
-	err := LoadStorage(s.ctx, s.cfg.Storage, &s.store)
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	err := LoadStorage(ctx, s.cfg.Storage, &s.store)
 	if err != nil {
-		log.Fatalf("[ERROR] failed to init storage: %e", err)
+		err := fmt.Errorf("failed to init storage: %w", err)
+		return err
 	}
 
 	r := repo.NewRepository(s.store, s.client, s.cfg)
@@ -47,7 +49,8 @@ func (s *Commander) Run(opts Options) {
 		log.Printf("[INFO] starting CheckConsistency")
 		checked, err := r.CheckConsistency()
 		if err != nil {
-			log.Printf("[ERROR] CheckConsistency: %d, %e", checked, err)
+			err := fmt.Errorf("checkConsistency: %d, %w", checked, err)
+			return err
 		} else {
 			log.Printf("[INFO] CheckConsistency: OK, %d", checked)
 		}
@@ -56,17 +59,17 @@ func (s *Commander) Run(opts Options) {
 		// Run cleanup job. crontab line example:
 		// 00 10 * * * cd $HOME/go/src/zoomrs/dist && ./zoomrs-cli --dbg --cmd trash --trash 2 --config ../config/config_cli.yml >> /var/log/cron.log 2>&1
 		if opts.Trash == -1 { // -1 is default value, so "0" value is allowed - it will delete today's meetings
-			log.Printf("[ERROR] CleanupJob: '--trash' option (days) is not set")
-			break
+			return fmt.Errorf("cleanupJob: '--trash' option (days) is not set")
 		}
-		r.CleanupJob(s.ctx, opts.Trash)
+		r.CleanupJob(ctx, opts.Trash)
 	case "cloudcap":
 		log.Printf("[INFO] starting DeleteRecordingsOverCapacity")
 		// Last line of defence against Zoom cloud storage overuse:
 		// 00 10 * * * cd $HOME/go/src/zoomrs/dist && ./zoomrs-cli --dbg --cmd cloudcap --config ../config/config_cli.yml >> /var/log/cron.log 2>&1
-		deleted, err := s.client.DeleteRecordingsOverCapacity(s.ctx, s.cfg.Client.CloudCapacityHardLimit)
+		deleted, err := s.client.DeleteRecordingsOverCapacity(ctx, s.cfg.Client.CloudCapacityHardLimit)
 		if err != nil {
-			log.Printf("[ERROR] DeleteRecordingsOverCapacity: %d, %e", deleted, err)
+			err := fmt.Errorf("deleteRecordingsOverCapacity: %d, %w", deleted, err)
+			return err
 		} else {
 			log.Printf("[INFO] DeleteRecordingsOverCapacity: OK, %d meetings deleted", deleted)
 		}
@@ -75,12 +78,12 @@ func (s *Commander) Run(opts Options) {
 
 		if len(r.Syncable.Important)+len(r.Syncable.Alternative)+len(r.Syncable.Optional) == 0 {
 			log.Printf("[INFO] No sync types configured. Sync job will not run")
-			return
+			return fmt.Errorf("sync job will not run: no sync types configured")
 		}
 		for {
 			select {
-			case <-s.ctx.Done():
-				return
+			case <-ctx.Done():
+				return fmt.Errorf("sync job terminated early: %w", ctx.Err())
 			default:
 			}
 
@@ -88,8 +91,8 @@ func (s *Commander) Run(opts Options) {
 			if err != nil {
 				log.Printf("[ERROR] failed to get meetings, %v, retrying in 30 sec", err)
 				select {
-				case <-s.ctx.Done():
-					return
+				case <-ctx.Done():
+					return ctx.Err()
 				case <-time.After(30 * time.Second):
 					continue
 				}
@@ -100,8 +103,8 @@ func (s *Commander) Run(opts Options) {
 			if err != nil {
 				log.Printf("[ERROR] failed to sync meetings, %v, retrying in 30 sec", err)
 				select {
-				case <-s.ctx.Done():
-					return
+				case <-ctx.Done():
+					return ctx.Err()
 				case <-time.After(30 * time.Second):
 					continue
 				}
@@ -112,8 +115,8 @@ func (s *Commander) Run(opts Options) {
 		var lastError error
 		for {
 			select {
-			case <-s.ctx.Done():
-				return
+			case <-ctx.Done():
+				return fmt.Errorf("downloading terminated early: %w", ctx.Err())
 			default:
 			}
 			err = r.DownloadOnce()
@@ -129,8 +132,8 @@ func (s *Commander) Run(opts Options) {
 				log.Printf("[ERROR] failed to download meetings, %v, retrying in 30 sec", err)
 				lastError = err
 				select {
-				case <-s.ctx.Done():
-					return
+				case <-ctx.Done():
+					return fmt.Errorf("downloading terminated in the process: %w", ctx.Err())
 				case <-time.After(30 * time.Second):
 					continue
 				}
@@ -141,8 +144,7 @@ func (s *Commander) Run(opts Options) {
 	}
 
 	log.Printf("[INFO] cli job done\n*********************************")
-	s.cancel()
-	<-s.ctx.Done()
+	return nil
 }
 
 func LoadStorage(ctx context.Context, cfg config.Storage, s *storage.Storer) error {
@@ -222,5 +224,8 @@ func main() {
 		}
 	}()
 
-	NewCommander(conf, ctx, cancel).Run(opts)
+	err := NewCommander(conf).Run(ctx, opts)
+	if err != nil {
+		log.Printf("[ERROR] Commander returned error: %v\n", err)
+	}
 }
