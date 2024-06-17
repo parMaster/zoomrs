@@ -95,7 +95,7 @@ func (r *Repository) SyncJob(ctx context.Context) {
 		}
 		log.Printf("[DEBUG] Syncing meetings - %d in feed", len(meetings))
 
-		if err = r.SyncMeetings(&meetings); err != nil {
+		if err = r.SyncMeetings(ctx, &meetings); err != nil {
 			log.Printf("[ERROR] failed to sync meetings, %v, retrying in 30 sec", err)
 			select {
 			case <-ctx.Done():
@@ -115,7 +115,7 @@ func (r *Repository) SyncJob(ctx context.Context) {
 
 // SyncMeeting gets a slice of meetings and saves new ones to the database.
 // Filter for MinDuration and RecordType is applied.
-func (r *Repository) SyncMeetings(meetings *[]model.Meeting) error {
+func (r *Repository) SyncMeetings(ctx context.Context, meetings *[]model.Meeting) error {
 	if len(*meetings) == 0 {
 		log.Printf("[DEBUG] No meetings to sync")
 		return nil
@@ -134,7 +134,7 @@ func (r *Repository) SyncMeetings(meetings *[]model.Meeting) error {
 			}
 			continue
 		}
-		_, err := r.store.GetMeeting(meeting.UUID)
+		_, err := r.store.GetMeeting(ctx, meeting.UUID)
 		if err != nil {
 			if err == storage.ErrNoRows {
 
@@ -178,7 +178,7 @@ func (r *Repository) SyncMeetings(meetings *[]model.Meeting) error {
 					continue
 				}
 
-				err := r.store.SaveMeeting(meeting)
+				err := r.store.SaveMeeting(ctx, meeting)
 				if err != nil {
 					return fmt.Errorf("failed to save meeting %s, %w", meeting.UUID, err)
 				}
@@ -206,7 +206,7 @@ func (r *Repository) DownloadJob(ctx context.Context) {
 		case <-ticker.C:
 		}
 
-		err := r.DownloadOnce()
+		err := r.DownloadOnce(ctx)
 		if err == ErrNoQueuedRecords {
 			ticker.Reset(1 * time.Minute)
 			continue
@@ -219,12 +219,12 @@ func (r *Repository) DownloadJob(ctx context.Context) {
 }
 
 // DownloadOnce gets a queued record and downloads it
-func (r *Repository) DownloadOnce() error {
-	queued, err := r.store.GetQueuedRecord()
+func (r *Repository) DownloadOnce(ctx context.Context) error {
+	queued, err := r.store.GetQueuedRecord(ctx)
 	if err == storage.ErrNoRows {
 		log.Printf("[DEBUG] No queued records")
 		// retry 'failed' records and 'downloading' records - put them back to 'queued'
-		err := r.store.ResetFailedRecords()
+		err := r.store.ResetFailedRecords(ctx)
 		if err != nil {
 			return errors.Join(fmt.Errorf("failed to reset failed records"), err)
 		}
@@ -238,12 +238,12 @@ func (r *Repository) DownloadOnce() error {
 	if queued != nil {
 		log.Printf("[DEBUG] ↓ %d MB | %s record %s meetingId %s", queued.FileSize/1024/1024, queued.Type, queued.Id, queued.MeetingId)
 		log.Printf("[INFO] ↓ %d MB | %s | %s", queued.FileSize/1024/1024, queued.Id, queued.DateTime)
-		downErr := r.DownloadRecord(queued)
+		downErr := r.DownloadRecord(ctx, queued)
 		if downErr != nil {
 			return errors.Join(fmt.Errorf("download returned error %s", queued.Id), downErr)
 		}
 
-		if r.meetingRecordsLoaded(queued.MeetingId) && (r.cfg.Client.DeleteDownloaded || r.cfg.Client.TrashDownloaded) {
+		if r.meetingRecordsLoaded(ctx, queued.MeetingId) && (r.cfg.Client.DeleteDownloaded || r.cfg.Client.TrashDownloaded) {
 			err := r.client.DeleteMeetingRecordings(queued.MeetingId, r.cfg.Client.DeleteDownloaded)
 			if err != nil {
 				return errors.Join(fmt.Errorf("failed to delete meeting %s", queued.MeetingId), err)
@@ -254,49 +254,49 @@ func (r *Repository) DownloadOnce() error {
 }
 
 // DownloadRecord downloads the record file from the given URL
-func (r *Repository) DownloadRecord(record *model.Record) error {
+func (r *Repository) DownloadRecord(ctx context.Context, record *model.Record) error {
 
 	token, err := r.client.GetToken()
 	if err != nil {
 		return err
 	}
-	r.store.UpdateRecord(record.Id, model.StatusDownloading, "")
+	r.store.UpdateRecord(ctx, record.Id, model.StatusDownloading, "")
 
 	path, _ := record.Paths(r.cfg.Storage.Repository)
 	if err = r.prepareDestination(path); err != nil {
 		return err
 	}
 
-	if _, err = r.freeUpSpace(); err != nil {
+	if _, err = r.freeUpSpace(ctx); err != nil {
 		log.Printf("[ERROR] failed to free up space, %v", err)
 	}
 
 	url := fmt.Sprintf("%s?access_token=%s", record.DownloadURL, token.AccessToken)
 	resp, err := grab.Get(path, url)
 	if err != nil {
-		r.store.UpdateRecord(record.Id, model.StatusFailed, "")
+		r.store.UpdateRecord(ctx, record.Id, model.StatusFailed, "")
 		return fmt.Errorf("failed to download %s, %v", url, err)
 	}
 
 	// check if the download was successful
 	if resp.HTTPResponse.StatusCode != 200 {
-		r.store.UpdateRecord(record.Id, model.StatusFailed, "")
+		r.store.UpdateRecord(ctx, record.Id, model.StatusFailed, "")
 		return fmt.Errorf("failed to download %s, status %d", url, resp.HTTPResponse.StatusCode)
 	}
 	// check if the file is not empty
 	if resp.Size() == 0 || resp.Size() != int64(record.FileSize) {
-		r.store.UpdateRecord(record.Id, model.StatusFailed, "")
+		r.store.UpdateRecord(ctx, record.Id, model.StatusFailed, "")
 		return fmt.Errorf("failed to download %s, size %d", url, resp.Size())
 	}
 
 	// check if resp.Filename extension matches record.FileExtension
 	if resp.Filename[len(resp.Filename)-len(record.FileExtension):] != strings.ToLower(record.FileExtension) {
-		r.store.UpdateRecord(record.Id, model.StatusFailed, "")
+		r.store.UpdateRecord(ctx, record.Id, model.StatusFailed, "")
 		return fmt.Errorf("failed to download %s, extension %s", url, resp.Filename[len(resp.Filename)-len(record.FileExtension):])
 	}
 
 	log.Printf("[DEBUG] Download saved to %s", resp.Filename)
-	if err := r.store.UpdateRecord(record.Id, model.StatusDownloaded, resp.Filename); err != nil {
+	if err := r.store.UpdateRecord(ctx, record.Id, model.StatusDownloaded, resp.Filename); err != nil {
 		return fmt.Errorf("failed to update record %s, %w", record.Id, err)
 	}
 
@@ -314,8 +314,8 @@ func (r *Repository) prepareDestination(path string) error {
 }
 
 // meetingRecordsLoaded returns true if all records for the meeting are loaded
-func (r *Repository) meetingRecordsLoaded(meetingId string) bool {
-	records, err := r.store.GetRecords(meetingId)
+func (r *Repository) meetingRecordsLoaded(ctx context.Context, meetingId string) bool {
+	records, err := r.store.GetRecords(ctx, meetingId)
 	if err != nil {
 		return false
 	}
@@ -448,8 +448,8 @@ func (r *Repository) requestMeetingsLoaded(meetings []string) (loaded bool, err 
 
 // CheckConsistency checks if all downloaded files exist and have correct size
 // returns number of checked files and error
-func (r *Repository) CheckConsistency() (checked int, result error) {
-	recs, err := r.store.GetRecordsByStatus(model.StatusDownloaded)
+func (r *Repository) CheckConsistency(ctx context.Context) (checked int, result error) {
+	recs, err := r.store.GetRecordsByStatus(ctx, model.StatusDownloaded)
 	if err != nil {
 		return 0, fmt.Errorf("failed to get records by status %s: %w", model.StatusDownloaded, err)
 	}
@@ -482,7 +482,7 @@ func (r *Repository) CheckConsistency() (checked int, result error) {
 
 // freeUpSpace deletes downloaded files if there is less than cfg.Storage.KeepFreeSpace bytes free
 // on the drive where cfg.Storage.Repository located
-func (r *Repository) freeUpSpace() (deleted int, result error) {
+func (r *Repository) freeUpSpace(ctx context.Context) (deleted int, result error) {
 	usage, err := disk.Usage(r.cfg.Storage.Repository)
 	if err != nil {
 		return 0, fmt.Errorf("failed to get disk usage: %w", err)
@@ -498,7 +498,7 @@ func (r *Repository) freeUpSpace() (deleted int, result error) {
 	}
 	log.Printf("[DEBUG] Free space Available/Required: %d/%d bytes (%s/ %s), %d bytes (%s) over the limit", usage.Free, r.cfg.Storage.KeepFreeSpace, model.FileSize(usage.Free), model.FileSize(r.cfg.Storage.KeepFreeSpace), r.cfg.Storage.KeepFreeSpace-usage.Free, model.FileSize(r.cfg.Storage.KeepFreeSpace-usage.Free))
 
-	recs, err := r.store.GetRecordsByStatus(model.StatusDownloaded)
+	recs, err := r.store.GetRecordsByStatus(ctx, model.StatusDownloaded)
 	if err != nil {
 		return deleted, fmt.Errorf("failed to get downloaded records %w", err)
 	}
@@ -523,7 +523,7 @@ func (r *Repository) freeUpSpace() (deleted int, result error) {
 		} else {
 			deleted++
 			log.Printf("[DEBUG] Deleted %s", recFolder)
-			r.store.UpdateRecord(rec.Id, model.StatusDeleted, "")
+			r.store.UpdateRecord(ctx, rec.Id, model.StatusDeleted, "")
 		}
 
 		// if dateFolder is empty, delete it
@@ -546,8 +546,8 @@ func (r *Repository) freeUpSpace() (deleted int, result error) {
 // GetStats - returns statistics about the repository. d is a divider for the file size: 'K', 'M', 'G'.
 // returns map[day]size in d units (K, M, G) for all downloaded records grouped by day. day is in format YYYY-MM-DD
 // if d is not one of the supported dividers, the size is returned in bytes
-func (r *Repository) GetStats(d rune) (stats map[string]int64, err error) {
-	recs, err := r.store.GetRecordsByStatus(model.StatusDownloaded)
+func (r *Repository) GetStats(ctx context.Context, d rune) (stats map[string]int64, err error) {
+	recs, err := r.store.GetRecordsByStatus(ctx, model.StatusDownloaded)
 	if recs == nil {
 		return nil, fmt.Errorf("failed to get records by status %s: %w", model.StatusDownloaded, err)
 	}

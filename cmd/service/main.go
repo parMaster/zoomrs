@@ -90,7 +90,7 @@ func (s *Server) Run() {
 func (s *Server) startServer(ctx context.Context) {
 	httpServer := &http.Server{
 		Addr:              s.cfg.Server.Listen,
-		Handler:           s.router(),
+		Handler:           s.router(ctx),
 		ReadHeaderTimeout: time.Second,
 		WriteTimeout:      30 * time.Second,
 		IdleTimeout:       time.Second,

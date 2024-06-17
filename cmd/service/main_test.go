@@ -65,7 +65,9 @@ func setup(cfg *config.Parameters, store storage.Storer) error {
 		Records:   testRecords,
 	}
 
-	err := store.SaveMeeting(testMeeting)
+	ctx := context.Background()
+
+	err := store.SaveMeeting(ctx, testMeeting)
 	if err != nil {
 		return err
 	}
@@ -113,7 +115,7 @@ func Test_CheckConsistency(t *testing.T) {
 
 	repo := repo.NewRepository(s, client, cfg)
 
-	checked, err := repo.CheckConsistency()
+	checked, err := repo.CheckConsistency(ctx)
 
 	assert.NoError(t, err)
 	assert.Equal(t, 3, checked)

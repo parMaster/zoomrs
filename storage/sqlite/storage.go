@@ -12,8 +12,7 @@ import (
 )
 
 type SQLiteStorage struct {
-	DB  *sql.DB
-	ctx context.Context
+	DB *sql.DB
 }
 
 // NewStorage creates new SQLite storage, creates tables if they don't exist
@@ -51,18 +50,18 @@ func NewStorage(ctx context.Context, path string) (*SQLiteStorage, error) {
 		return nil, err
 	}
 
-	return &SQLiteStorage{DB: sqliteDatabase, ctx: ctx}, nil
+	return &SQLiteStorage{DB: sqliteDatabase}, nil
 }
 
 // SaveMeeting saves a meeting to the database
-func (s *SQLiteStorage) SaveMeeting(meeting model.Meeting) error {
+func (s *SQLiteStorage) SaveMeeting(ctx context.Context, meeting model.Meeting) error {
 	// convert time to local
 	meeting.StartTime = meeting.StartTime.Local()
 
 	q := "INSERT INTO `meetings`(uuid, id, topic, startTime) VALUES ($1, $2, $3, $4)"
 	log.Printf("[DEBUG] Saving meeting: %v", meeting)
 
-	_, err := s.DB.ExecContext(s.ctx, q,
+	_, err := s.DB.ExecContext(ctx, q,
 		meeting.UUID,                            // uuid
 		meeting.Id,                              // id
 		meeting.Topic,                           // topic
@@ -73,7 +72,7 @@ func (s *SQLiteStorage) SaveMeeting(meeting model.Meeting) error {
 	}
 
 	for _, r := range meeting.Records {
-		err := s.saveRecord(r)
+		err := s.saveRecord(ctx, r)
 		if err != nil {
 			return err
 		}
@@ -82,7 +81,7 @@ func (s *SQLiteStorage) SaveMeeting(meeting model.Meeting) error {
 }
 
 // SaveRecord saves a record to the database
-func (s *SQLiteStorage) saveRecord(record model.Record) error {
+func (s *SQLiteStorage) saveRecord(ctx context.Context, record model.Record) error {
 	if record.Status == "" {
 		record.Status = model.StatusQueued
 	}
@@ -91,7 +90,7 @@ func (s *SQLiteStorage) saveRecord(record model.Record) error {
 	record.StartTime = record.StartTime.Local()
 
 	q := "INSERT INTO `records` VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)"
-	_, err := s.DB.ExecContext(s.ctx, q,
+	_, err := s.DB.ExecContext(ctx, q,
 		record.Id,                              // id
 		record.MeetingId,                       // meetingId
 		record.Type,                            // type
@@ -106,9 +105,9 @@ func (s *SQLiteStorage) saveRecord(record model.Record) error {
 }
 
 // GetMeeting returns a meeting from the database
-func (s *SQLiteStorage) GetMeeting(UUID string) (*model.Meeting, error) {
+func (s *SQLiteStorage) GetMeeting(ctx context.Context, UUID string) (*model.Meeting, error) {
 	q := "SELECT * FROM `meetings` WHERE uuid = $1"
-	row := s.DB.QueryRowContext(s.ctx, q, UUID)
+	row := s.DB.QueryRowContext(ctx, q, UUID)
 	meeting := model.Meeting{}
 	err := row.Scan(&meeting.UUID, &meeting.Id, &meeting.Topic, &meeting.DateTime)
 	if err != nil {
@@ -121,9 +120,9 @@ func (s *SQLiteStorage) GetMeeting(UUID string) (*model.Meeting, error) {
 }
 
 // GetRecords returns records of specific meeting from the database
-func (s *SQLiteStorage) GetRecords(UUID string) ([]model.Record, error) {
+func (s *SQLiteStorage) GetRecords(ctx context.Context, UUID string) ([]model.Record, error) {
 	q := "SELECT * FROM `records` WHERE meetingId = $1"
-	rows, err := s.DB.QueryContext(s.ctx, q, UUID)
+	rows, err := s.DB.QueryContext(ctx, q, UUID)
 	if err != nil {
 		return nil, err
 	}
@@ -152,9 +151,9 @@ func (s *SQLiteStorage) GetRecords(UUID string) ([]model.Record, error) {
 }
 
 // ListMeetings returns a list of meetings from the database
-func (s *SQLiteStorage) GetMeetings() ([]model.Meeting, error) {
+func (s *SQLiteStorage) GetMeetings(ctx context.Context) ([]model.Meeting, error) {
 	q := "SELECT * FROM `meetings` ORDER BY startTime DESC"
-	rows, err := s.DB.QueryContext(s.ctx, q)
+	rows, err := s.DB.QueryContext(ctx, q)
 	if err != nil {
 		return nil, err
 	}
@@ -174,9 +173,9 @@ func (s *SQLiteStorage) GetMeetings() ([]model.Meeting, error) {
 
 // ListMeetings returns a list of meetings ready to be shown in the UI
 // Meeting must have at least one recording of type 'MP4' with status =='downloaded'
-func (s *SQLiteStorage) ListMeetings() ([]model.Meeting, error) {
+func (s *SQLiteStorage) ListMeetings(ctx context.Context) ([]model.Meeting, error) {
 	q := "SELECT DISTINCT m.* FROM `meetings` m JOIN `records` r ON m.uuid = r.meetingId WHERE status = 'downloaded' AND r.fileExtension = 'MP4' ORDER BY startTime DESC"
-	rows, err := s.DB.QueryContext(s.ctx, q)
+	rows, err := s.DB.QueryContext(ctx, q)
 	if err != nil {
 		return nil, err
 	}
@@ -195,37 +194,37 @@ func (s *SQLiteStorage) ListMeetings() ([]model.Meeting, error) {
 }
 
 // DeleteMeeting deletes a meeting with corresponding records from the database
-func (s *SQLiteStorage) DeleteMeeting(UUID string) error {
+func (s *SQLiteStorage) DeleteMeeting(ctx context.Context, UUID string) error {
 	q := "DELETE FROM `records` WHERE meetingId = $1"
-	_, err := s.DB.ExecContext(s.ctx, q, UUID)
+	_, err := s.DB.ExecContext(ctx, q, UUID)
 	if err != nil {
 		return err
 	}
 
 	q = "DELETE FROM `meetings` WHERE uuid = $1"
-	_, err = s.DB.ExecContext(s.ctx, q, UUID)
+	_, err = s.DB.ExecContext(ctx, q, UUID)
 	return err
 }
 
 // UpdateRecord updates a record in the database
-func (s *SQLiteStorage) UpdateRecord(Id string, status model.RecordStatus, path string) error {
+func (s *SQLiteStorage) UpdateRecord(ctx context.Context, Id string, status model.RecordStatus, path string) error {
 	q := "UPDATE `records` SET status = $1, path = $2 WHERE id = $3"
-	_, err := s.DB.ExecContext(s.ctx, q, status, path, Id)
+	_, err := s.DB.ExecContext(ctx, q, status, path, Id)
 	return err
 }
 
 // ResetFailedRecords resets all failed records to queued
-func (s *SQLiteStorage) ResetFailedRecords() error {
+func (s *SQLiteStorage) ResetFailedRecords(ctx context.Context) error {
 	q := "UPDATE `records` SET status = 'queued' WHERE status IN ('failed', 'downloading')"
-	_, err := s.DB.ExecContext(s.ctx, q)
+	_, err := s.DB.ExecContext(ctx, q)
 	return err
 }
 
 // GetQueuedRecord returns a queued record from the database
-func (s *SQLiteStorage) GetQueuedRecord() (*model.Record, error) {
+func (s *SQLiteStorage) GetQueuedRecord(ctx context.Context) (*model.Record, error) {
 	q := "SELECT * FROM `records` WHERE status = $1 ORDER BY startTime, id LIMIT 1"
 
-	row := s.DB.QueryRowContext(s.ctx, q, model.StatusQueued)
+	row := s.DB.QueryRowContext(ctx, q, model.StatusQueued)
 	record := model.Record{}
 	err := row.Scan(
 		&record.Id,
@@ -248,9 +247,9 @@ func (s *SQLiteStorage) GetQueuedRecord() (*model.Record, error) {
 }
 
 // GetRecords returns records from the database
-func (s *SQLiteStorage) GetRecordsByStatus(status model.RecordStatus) ([]model.Record, error) {
+func (s *SQLiteStorage) GetRecordsByStatus(ctx context.Context, status model.RecordStatus) ([]model.Record, error) {
 	q := "SELECT * FROM `records` WHERE status = $1 ORDER BY startTime"
-	rows, err := s.DB.QueryContext(s.ctx, q, status)
+	rows, err := s.DB.QueryContext(ctx, q, status)
 	if err != nil {
 		return nil, err
 	}
@@ -280,9 +279,9 @@ func (s *SQLiteStorage) GetRecordsByStatus(status model.RecordStatus) ([]model.R
 }
 
 // Stats returns the number of records in each status
-func (s *SQLiteStorage) Stats() (map[model.RecordStatus]interface{}, error) {
+func (s *SQLiteStorage) Stats(ctx context.Context) (map[model.RecordStatus]interface{}, error) {
 	q := "select sum(fileSize)/1048576 as size_mb, sum(fileSize)/1073741824 as size_gb, count(id) as count, status FROM records group by status;"
-	rows, err := s.DB.QueryContext(s.ctx, q)
+	rows, err := s.DB.QueryContext(ctx, q)
 	if err != nil {
 		return nil, err
 	}
@@ -304,13 +303,13 @@ func (s *SQLiteStorage) Stats() (map[model.RecordStatus]interface{}, error) {
 }
 
 // Cleanup deletes all meetings and records from the database, used for testing
-func (s *SQLiteStorage) Cleanup() error {
+func (s *SQLiteStorage) Cleanup(ctx context.Context) error {
 	q := "DELETE FROM `meetings`"
-	_, err := s.DB.ExecContext(s.ctx, q)
+	_, err := s.DB.ExecContext(ctx, q)
 	if err != nil {
 		return err
 	}
 	q = "DELETE FROM `records`"
-	_, err = s.DB.ExecContext(s.ctx, q)
+	_, err = s.DB.ExecContext(ctx, q)
 	return err
 }

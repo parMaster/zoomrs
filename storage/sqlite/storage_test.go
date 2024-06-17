@@ -27,7 +27,7 @@ func Test_SqliteStorage(t *testing.T) {
 	if err != nil {
 		log.Printf("[ERROR] Failed to open SQLite storage: %e", err)
 	}
-	store.Cleanup()
+	store.Cleanup(ctx)
 
 	timeNow := time.Now()
 
@@ -79,57 +79,57 @@ func Test_SqliteStorage(t *testing.T) {
 	}
 
 	// write a record
-	err = store.SaveMeeting(testMeeting)
+	err = store.SaveMeeting(ctx, testMeeting)
 	assert.Nil(t, err)
 
 	// read a record
-	meeting, err := store.GetMeeting(testMeeting.UUID)
+	meeting, err := store.GetMeeting(ctx, testMeeting.UUID)
 	assert.Nil(t, err)
 	assert.Equal(t, testMeeting.UUID, meeting.UUID)
 	assert.Equal(t, testMeeting.Id, meeting.Id)
 	assert.Equal(t, timeNow.Format(time.DateTime), meeting.DateTime)
 
 	// read records
-	records, err := store.GetRecords(testMeeting.UUID)
+	records, err := store.GetRecords(ctx, testMeeting.UUID)
 	assert.Nil(t, err)
 	assert.Equal(t, len(testRecords), len(records))
 	assert.Equal(t, timeNow.Format(time.DateTime), records[0].DateTime)
 	assert.Equal(t, timeNow.Format(time.DateTime), records[1].DateTime)
 
 	// no such meeting
-	meeting, err = store.GetMeeting("noSuchUUID")
+	meeting, err = store.GetMeeting(ctx, "noSuchUUID")
 	assert.NotNil(t, err)
 	assert.ErrorIs(t, err, storage.ErrNoRows)
 	assert.Nil(t, meeting)
 
 	// no such records
-	records, err = store.GetRecords("noSuchUUID")
+	records, err = store.GetRecords(ctx, "noSuchUUID")
 	assert.Empty(t, records)
 	assert.Nil(t, err)
 
 	// Get queued records - happy path
-	q3, err := store.GetQueuedRecord()
+	q3, err := store.GetQueuedRecord(ctx)
 	assert.NoError(t, err)
 	assert.NotNil(t, q3)
 	assert.Equal(t, "Id1", q3.Id)
 	assert.Equal(t, testRecords[0].FileSize, q3.FileSize)
 
 	// Update record status
-	err = store.UpdateRecord("Id1", model.StatusDownloading, "testPath")
+	err = store.UpdateRecord(ctx, "Id1", model.StatusDownloading, "testPath")
 	assert.NoError(t, err)
-	err = store.UpdateRecord("Id3", model.StatusFailed, "testPath")
+	err = store.UpdateRecord(ctx, "Id3", model.StatusFailed, "testPath")
 	assert.NoError(t, err)
 
 	// Get queued records - no rows
-	q4, err := store.GetQueuedRecord()
+	q4, err := store.GetQueuedRecord(ctx)
 	assert.ErrorIs(t, err, storage.ErrNoRows)
 	assert.Nil(t, q4)
 
 	// Reset failed records
-	err = store.ResetFailedRecords()
+	err = store.ResetFailedRecords(ctx)
 	assert.NoError(t, err)
 	// check that all records are queued
-	records, err = store.GetRecords(testMeeting.UUID)
+	records, err = store.GetRecords(ctx, testMeeting.UUID)
 	assert.NoError(t, err)
 	assert.Equal(t, len(testRecords), len(records))
 	assert.Equal(t, model.StatusQueued, records[0].Status)
@@ -137,7 +137,7 @@ func Test_SqliteStorage(t *testing.T) {
 	assert.Equal(t, model.StatusQueued, records[2].Status)
 
 	// List meetings
-	meetings, err := store.GetMeetings()
+	meetings, err := store.GetMeetings(ctx)
 	assert.NoError(t, err)
 	assert.Equal(t, 1, len(meetings))
 	assert.Equal(t, testMeeting.UUID, meetings[0].UUID)

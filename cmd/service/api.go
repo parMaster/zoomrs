@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"crypto/md5"
 	"encoding/json"
 	"fmt"
@@ -21,7 +22,7 @@ import (
 	"github.com/shirou/gopsutil/v3/disk"
 )
 
-func (s *Server) router() http.Handler {
+func (s *Server) router(ctx context.Context) http.Handler {
 	router := chi.NewRouter()
 	router.Use(rest.Throttle(5))
 
@@ -32,23 +33,23 @@ func (s *Server) router() http.Handler {
 
 	// Private routes
 	m := s.authService.Middleware()
-	router.With(m.Auth).Get("/listMeetings", s.listMeetingsHandler)
+	router.With(m.Auth).Get("/listMeetings", s.listMeetings(ctx))
 
 	router.With(m.Trace).Get("/", s.indexPageHandler)
 
 	router.With(m.Auth).Route("/stats", func(r chi.Router) {
-		r.Get("/{divider}", s.statsHandler)
-		r.Get("/", s.statsHandler)
+		r.Get("/{divider}", s.statsHandler(ctx))
+		r.Get("/", s.statsHandler(ctx))
 	})
 
-	router.Post("/meetingsLoaded/{accessKey}", s.meetingsLoadedHandler)
+	router.Post("/meetingsLoaded/{accessKey}", s.meetingsLoadedHandler(ctx))
 
-	router.With(m.Auth).Get("/check", s.checkConsistencyHandler)
+	router.With(m.Auth).Get("/check", s.checkConsistencyHandler(ctx))
 
 	// Public routes
-	router.Get("/status", s.statusHandler)
+	router.Get("/status", s.statusHandler(ctx))
 
-	router.Get("/watchMeeting/{accessKey}", s.watchMeetingHandler)
+	router.Get("/watchMeeting/{accessKey}", s.watchMeetingHandler(ctx))
 	router.Get("/watch/{accessKey}", s.watchHandler)
 
 	router.Get("/login", func(rw http.ResponseWriter, r *http.Request) {
@@ -107,219 +108,227 @@ func (s *Server) respondWithFile(file string, rw http.ResponseWriter) error {
 	return nil
 }
 
-func (s *Server) statusHandler(rw http.ResponseWriter, r *http.Request) {
-	stats, _ := s.store.Stats()
+func (s *Server) statusHandler(ctx context.Context) func(rw http.ResponseWriter, r *http.Request) {
+	return func(rw http.ResponseWriter, r *http.Request) {
+		stats, _ := s.store.Stats(ctx)
 
-	if stats == nil {
-		rw.WriteHeader(http.StatusNoContent)
-		return
+		if stats == nil {
+			rw.WriteHeader(http.StatusNoContent)
+			return
+		}
+
+		_, qok := stats[model.StatusQueued]
+		_, fok := stats[model.StatusFailed]
+		_, dok := stats[model.StatusDownloading]
+
+		var status string
+		if qok || dok {
+			status = "LOADING"
+		} else if fok && !dok && !qok {
+			status = "FAILED"
+		} else {
+			status = "OK"
+		}
+
+		resp := map[string]interface{}{
+			"status": status,
+			"stats":  stats,
+		}
+
+		var lastDownloadedMeeting model.Meeting
+		cachedLast, err := s.cache.Get("lastDownloadedMeeting")
+		if err != nil {
+			log.Printf("[DEBUG] miss")
+
+			meetingsLoaded, err := s.store.ListMeetings(ctx)
+			if err != nil {
+				log.Printf("[ERROR] failed to list meetings, %v", err)
+				rw.WriteHeader(http.StatusInternalServerError)
+				return
+			}
+			lastDownloadedMeeting = meetingsLoaded[0]
+			s.cache.Set("lastDownloadedMeeting", lastDownloadedMeeting, 10*60)
+		} else {
+			log.Printf("[DEBUG] hit")
+			lastDownloadedMeeting = cachedLast.(model.Meeting)
+		}
+		resp["last_downloaded"] = lastDownloadedMeeting.DateTime
+
+		var cloudStorageReport *model.CloudRecordingReport
+		cachedCloud, err := s.cache.Get("cloudStorageReport")
+		if err != nil {
+			log.Printf("[DEBUG] miss")
+
+			cloudStorageReport, err = s.client.GetCloudStorageReport(time.Now().AddDate(0, 0, -7).Format("2006-01-02"), time.Now().Format("2006-01-02"))
+			if err != nil {
+				log.Printf("[ERROR] failed to get cloud storage report, %v", err)
+				rw.WriteHeader(http.StatusInternalServerError)
+				return
+			}
+			s.cache.Set("cloudStorageReport", cloudStorageReport, 60*60)
+		} else {
+			log.Printf("[DEBUG] hit")
+			cloudStorageReport = cachedCloud.(*model.CloudRecordingReport)
+		}
+
+		// cloud storage stats
+		var cloud model.CloudRecordingStorage
+		if cloudStorageReport != nil && cloudStorageReport.CloudRecordingStorage != nil && len(cloudStorageReport.CloudRecordingStorage) > 0 {
+
+			cloud = cloudStorageReport.CloudRecordingStorage[len(cloudStorageReport.CloudRecordingStorage)-1]
+
+			// remove " GB" suffix from FreeUsage, PlanUsage and Usage fields to convert them to float
+			freeUsage, _ := strconv.ParseFloat(strings.TrimSuffix(cloud.FreeUsage, " GB"), 64)
+			planUsage, _ := strconv.ParseFloat(strings.TrimSuffix(cloud.PlanUsage, " GB"), 64)
+			usage, _ := strconv.ParseFloat(strings.TrimSuffix(cloud.Usage, " GB"), 64)
+			// calculate usage percent
+			cloud.UsagePercent = int((usage / (freeUsage + planUsage)) * 100)
+
+			resp["cloud"] = cloud
+		}
+
+		// disk storage stats
+		diskStorageReport, err := disk.Usage(s.cfg.Storage.Repository)
+		if err != nil {
+			log.Printf("[ERROR] failed to get disk storage report, %v", err)
+			rw.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+
+		resp["storage"] = map[string]interface{}{
+			"total":         model.FileSize(diskStorageReport.Total),
+			"free":          model.FileSize(diskStorageReport.Free),
+			"used":          model.FileSize(diskStorageReport.Used),
+			"usage_percent": int(diskStorageReport.UsedPercent),
+		}
+
+		rw.Header().Set("Content-Type", "application/json")
+		enc := json.NewEncoder(rw)
+		enc.SetIndent("", "    ")
+		enc.Encode(resp)
 	}
+}
 
-	_, qok := stats[model.StatusQueued]
-	_, fok := stats[model.StatusFailed]
-	_, dok := stats[model.StatusDownloading]
+func (s *Server) listMeetings(ctx context.Context) func(rw http.ResponseWriter, r *http.Request) {
+	return func(rw http.ResponseWriter, r *http.Request) {
+		userInfo, err := token.GetUserInfo(r)
+		if err != nil {
+			log.Printf("[ERROR] failed to get user info, %v", err)
+			rw.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		log.Printf("[INFO] /listMeetings: %s (%s)", userInfo.Email, r.Header.Get("X-Real-Ip"))
 
-	var status string
-	if qok || dok {
-		status = "LOADING"
-	} else if fok && !dok && !qok {
-		status = "FAILED"
-	} else {
-		status = "OK"
-	}
-
-	resp := map[string]interface{}{
-		"status": status,
-		"stats":  stats,
-	}
-
-	var lastDownloadedMeeting model.Meeting
-	cachedLast, err := s.cache.Get("lastDownloadedMeeting")
-	if err != nil {
-		log.Printf("[DEBUG] miss")
-
-		meetingsLoaded, err := s.store.ListMeetings()
+		rw.Header().Set("Content-Type", "application/json")
+		rw.Header().Set("Access-Control-Allow-Origin", "*")
+		m, err := s.store.ListMeetings(ctx)
 		if err != nil {
 			log.Printf("[ERROR] failed to list meetings, %v", err)
 			rw.WriteHeader(http.StatusInternalServerError)
 			return
 		}
-		lastDownloadedMeeting = meetingsLoaded[0]
-		s.cache.Set("lastDownloadedMeeting", lastDownloadedMeeting, 10*60)
-	} else {
-		log.Printf("[DEBUG] hit")
-		lastDownloadedMeeting = cachedLast.(model.Meeting)
+
+		// mix in an accessKey for each meeting to be used in watchMeeting
+		for i := range m {
+
+			s := fmt.Sprintf("%s%s", m[i].UUID, s.cfg.Server.AccessKeySalt)
+			h := md5.New()
+			io.WriteString(h, s)
+			m[i].AccessKey = fmt.Sprintf("%x", h.Sum(nil))
+			// log.Printf("[DEBUG] salted uuid: %s, accessKey: %s", s, m[i].AccessKey)
+		}
+
+		resp := map[string]interface{}{
+			"data": m,
+		}
+		json.NewEncoder(rw).Encode(resp)
 	}
-	resp["last_downloaded"] = lastDownloadedMeeting.DateTime
+}
 
-	var cloudStorageReport *model.CloudRecordingReport
-	cachedCloud, err := s.cache.Get("cloudStorageReport")
-	if err != nil {
-		log.Printf("[DEBUG] miss")
+func (s *Server) watchMeetingHandler(ctx context.Context) func(rw http.ResponseWriter, r *http.Request) {
+	return func(rw http.ResponseWriter, r *http.Request) {
+		// uuid is get parameter
+		accessKey := chi.URLParam(r, "accessKey")
+		uuid := r.URL.Query().Get("uuid")
+		log.Printf("[INFO] /watchMeeting/%s?uuid=%s (%s)", accessKey, uuid, r.Header.Get("X-Real-Ip"))
 
-		cloudStorageReport, err = s.client.GetCloudStorageReport(time.Now().AddDate(0, 0, -7).Format("2006-01-02"), time.Now().Format("2006-01-02"))
+		if accessKey == "" || uuid == "" {
+			rw.WriteHeader(http.StatusBadRequest)
+			return
+		}
+
+		// check accessKey
+		h := md5.New()
+		saltedUUID := uuid + s.cfg.Server.AccessKeySalt
+		log.Printf("[DEBUG] salted uuid: %s", saltedUUID)
+		io.WriteString(h, saltedUUID)
+		key := fmt.Sprintf("%x", h.Sum(nil))
+		log.Printf("[DEBUG] accessKey: %s, key: %s", accessKey, key)
+		if accessKey != key {
+			rw.WriteHeader(http.StatusForbidden)
+			return
+		}
+
+		meeting, err := s.store.GetMeeting(ctx, uuid)
+		log.Printf("[DEBUG] meeting: %+v", meeting)
 		if err != nil {
-			log.Printf("[ERROR] failed to get cloud storage report, %v", err)
+			if err == storage.ErrNoRows {
+				rw.WriteHeader(http.StatusNotFound)
+				return
+			}
+			log.Printf("[ERROR] failed to get meeting, %v", err)
 			rw.WriteHeader(http.StatusInternalServerError)
 			return
 		}
-		s.cache.Set("cloudStorageReport", cloudStorageReport, 60*60)
-	} else {
-		log.Printf("[DEBUG] hit")
-		cloudStorageReport = cachedCloud.(*model.CloudRecordingReport)
-	}
 
-	// cloud storage stats
-	var cloud model.CloudRecordingStorage
-	if cloudStorageReport != nil && cloudStorageReport.CloudRecordingStorage != nil && len(cloudStorageReport.CloudRecordingStorage) > 0 {
-
-		cloud = cloudStorageReport.CloudRecordingStorage[len(cloudStorageReport.CloudRecordingStorage)-1]
-
-		// remove " GB" suffix from FreeUsage, PlanUsage and Usage fields to convert them to float
-		freeUsage, _ := strconv.ParseFloat(strings.TrimSuffix(cloud.FreeUsage, " GB"), 64)
-		planUsage, _ := strconv.ParseFloat(strings.TrimSuffix(cloud.PlanUsage, " GB"), 64)
-		usage, _ := strconv.ParseFloat(strings.TrimSuffix(cloud.Usage, " GB"), 64)
-		// calculate usage percent
-		cloud.UsagePercent = int((usage / (freeUsage + planUsage)) * 100)
-
-		resp["cloud"] = cloud
-	}
-
-	// disk storage stats
-	diskStorageReport, err := disk.Usage(s.cfg.Storage.Repository)
-	if err != nil {
-		log.Printf("[ERROR] failed to get disk storage report, %v", err)
-		rw.WriteHeader(http.StatusInternalServerError)
-		return
-	}
-
-	resp["storage"] = map[string]interface{}{
-		"total":         model.FileSize(diskStorageReport.Total),
-		"free":          model.FileSize(diskStorageReport.Free),
-		"used":          model.FileSize(diskStorageReport.Used),
-		"usage_percent": int(diskStorageReport.UsedPercent),
-	}
-
-	rw.Header().Set("Content-Type", "application/json")
-	enc := json.NewEncoder(rw)
-	enc.SetIndent("", "    ")
-	enc.Encode(resp)
-}
-
-func (s *Server) listMeetingsHandler(rw http.ResponseWriter, r *http.Request) {
-	userInfo, err := token.GetUserInfo(r)
-	if err != nil {
-		log.Printf("[ERROR] failed to get user info, %v", err)
-		rw.WriteHeader(http.StatusInternalServerError)
-		return
-	}
-	log.Printf("[INFO] /listMeetings: %s (%s)", userInfo.Email, r.Header.Get("X-Real-Ip"))
-
-	rw.Header().Set("Content-Type", "application/json")
-	rw.Header().Set("Access-Control-Allow-Origin", "*")
-	m, err := s.store.ListMeetings()
-	if err != nil {
-		log.Printf("[ERROR] failed to list meetings, %v", err)
-		rw.WriteHeader(http.StatusInternalServerError)
-		return
-	}
-
-	// mix in an accessKey for each meeting to be used in watchMeeting
-	for i := range m {
-
-		s := fmt.Sprintf("%s%s", m[i].UUID, s.cfg.Server.AccessKeySalt)
-		h := md5.New()
-		io.WriteString(h, s)
-		m[i].AccessKey = fmt.Sprintf("%x", h.Sum(nil))
-		// log.Printf("[DEBUG] salted uuid: %s, accessKey: %s", s, m[i].AccessKey)
-	}
-
-	resp := map[string]interface{}{
-		"data": m,
-	}
-	json.NewEncoder(rw).Encode(resp)
-}
-
-func (s *Server) watchMeetingHandler(rw http.ResponseWriter, r *http.Request) {
-	// uuid is get parameter
-	accessKey := chi.URLParam(r, "accessKey")
-	uuid := r.URL.Query().Get("uuid")
-	log.Printf("[INFO] /watchMeeting/%s?uuid=%s (%s)", accessKey, uuid, r.Header.Get("X-Real-Ip"))
-
-	if accessKey == "" || uuid == "" {
-		rw.WriteHeader(http.StatusBadRequest)
-		return
-	}
-
-	// check accessKey
-	h := md5.New()
-	saltedUUID := uuid + s.cfg.Server.AccessKeySalt
-	log.Printf("[DEBUG] salted uuid: %s", saltedUUID)
-	io.WriteString(h, saltedUUID)
-	key := fmt.Sprintf("%x", h.Sum(nil))
-	log.Printf("[DEBUG] accessKey: %s, key: %s", accessKey, key)
-	if accessKey != key {
-		rw.WriteHeader(http.StatusForbidden)
-		return
-	}
-
-	meeting, err := s.store.GetMeeting(uuid)
-	log.Printf("[DEBUG] meeting: %+v", meeting)
-	if err != nil {
-		if err == storage.ErrNoRows {
-			rw.WriteHeader(http.StatusNotFound)
+		records, err := s.store.GetRecords(ctx, meeting.UUID)
+		if err != nil {
+			log.Printf("[ERROR] failed to get records, %v", err)
+			rw.WriteHeader(http.StatusInternalServerError)
 			return
 		}
-		log.Printf("[ERROR] failed to get meeting, %v", err)
-		rw.WriteHeader(http.StatusInternalServerError)
-		return
-	}
+		// cleanup records of columns FileExtension, DownloadURL, PlayURL
+		for i := range records {
+			records[i].FileExtension = ""
+			records[i].DownloadURL = ""
+			records[i].PlayURL = ""
+		}
 
-	records, err := s.store.GetRecords(meeting.UUID)
-	if err != nil {
-		log.Printf("[ERROR] failed to get records, %v", err)
-		rw.WriteHeader(http.StatusInternalServerError)
-		return
-	}
-	// cleanup records of columns FileExtension, DownloadURL, PlayURL
-	for i := range records {
-		records[i].FileExtension = ""
-		records[i].DownloadURL = ""
-		records[i].PlayURL = ""
-	}
+		log.Printf("[INFO] /watchMeeting granted")
 
-	log.Printf("[INFO] /watchMeeting granted")
-
-	resp := map[string]interface{}{
-		"meeting": meeting,
-		"records": records,
+		resp := map[string]interface{}{
+			"meeting": meeting,
+			"records": records,
+		}
+		rw.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(rw).Encode(resp)
 	}
-	rw.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(rw).Encode(resp)
 }
 
-func (s *Server) statsHandler(rw http.ResponseWriter, r *http.Request) {
-	divider := strings.ToUpper(chi.URLParam(r, "divider"))
-	var d rune
-	if len(divider) > 0 {
-		d = []rune(divider)[0]
-	}
+func (s *Server) statsHandler(ctx context.Context) func(rw http.ResponseWriter, r *http.Request) {
+	return func(rw http.ResponseWriter, r *http.Request) {
+		divider := strings.ToUpper(chi.URLParam(r, "divider"))
+		var d rune
+		if len(divider) > 0 {
+			d = []rune(divider)[0]
+		}
 
-	stats, err := s.repo.GetStats(d)
-	if err != nil {
-		rw.WriteHeader(http.StatusInternalServerError)
-		return
-	}
+		stats, err := s.repo.GetStats(ctx, d)
+		if err != nil {
+			rw.WriteHeader(http.StatusInternalServerError)
+			return
+		}
 
-	if stats == nil {
-		rw.WriteHeader(http.StatusNoContent)
-		return
-	}
+		if stats == nil {
+			rw.WriteHeader(http.StatusNoContent)
+			return
+		}
 
-	rw.Header().Set("Content-Type", "application/json")
-	enc := json.NewEncoder(rw)
-	enc.SetIndent("", "    ")
-	enc.Encode(stats)
+		rw.Header().Set("Content-Type", "application/json")
+		enc := json.NewEncoder(rw)
+		enc.SetIndent("", "    ")
+		enc.Encode(stats)
+	}
 }
 
 // filesOnly is a middleware to allow only files to be served, no directory listings allowed
@@ -337,74 +346,78 @@ func filesOnly(next http.Handler) http.Handler {
 // meetingsLoadedHandler is called to ask if every meeting from the list is loaded
 // list is passed as a JSON array of UUIDs in the request body
 // response is result:ok or result:pending
-func (s *Server) meetingsLoadedHandler(rw http.ResponseWriter, r *http.Request) {
-	accessKey := chi.URLParam(r, "accessKey")
-	log.Printf("[INFO] /meetingsLoaded/%s (%s)", accessKey, r.Header.Get("X-Real-Ip"))
-	if accessKey == "" || accessKey != s.cfg.Server.AccessKeySalt {
-		rw.WriteHeader(http.StatusForbidden)
-		return
-	}
+func (s *Server) meetingsLoadedHandler(ctx context.Context) func(rw http.ResponseWriter, r *http.Request) {
+	return func(rw http.ResponseWriter, r *http.Request) {
+		accessKey := chi.URLParam(r, "accessKey")
+		log.Printf("[INFO] /meetingsLoaded/%s (%s)", accessKey, r.Header.Get("X-Real-Ip"))
+		if accessKey == "" || accessKey != s.cfg.Server.AccessKeySalt {
+			rw.WriteHeader(http.StatusForbidden)
+			return
+		}
 
-	type req struct {
-		Meetings []string `json:"meetings"`
-	}
-	var uuids req
-	r.Body = http.MaxBytesReader(rw, r.Body, int64(1<<22)) // 4MB
-	decoder := json.NewDecoder(r.Body)
-	decoder.DisallowUnknownFields()
-	err := decoder.Decode(&uuids)
-	if err != nil {
-		log.Printf("[ERROR] failed to decode request body, %v", err)
-		rw.WriteHeader(http.StatusInternalServerError)
-		return
-	}
-
-	log.Printf("[DEBUG] Checking if uuids loaded: \r\n %+v", uuids.Meetings)
-	resp := map[string]interface{}{}
-	for _, uuid := range uuids.Meetings {
-		recs, err := s.store.GetRecords(uuid)
+		type req struct {
+			Meetings []string `json:"meetings"`
+		}
+		var uuids req
+		r.Body = http.MaxBytesReader(rw, r.Body, int64(1<<22)) // 4MB
+		decoder := json.NewDecoder(r.Body)
+		decoder.DisallowUnknownFields()
+		err := decoder.Decode(&uuids)
 		if err != nil {
-			log.Printf("[ERROR] failed to get records, %v", err)
+			log.Printf("[ERROR] failed to decode request body, %v", err)
 			rw.WriteHeader(http.StatusInternalServerError)
 			return
 		}
-		if len(recs) == 0 {
-			resp["result"] = "pending"
-			log.Printf("[DEBUG] Pending caused by no records for uuid: %s", uuid)
-			json.NewEncoder(rw).Encode(resp)
-			return
-		}
 
-		log.Printf("[DEBUG] Checking recs: \r\n %+v", recs)
-		for _, rec := range recs {
-
-			if rec.Status != model.StatusDownloaded {
+		log.Printf("[DEBUG] Checking if uuids loaded: \r\n %+v", uuids.Meetings)
+		resp := map[string]interface{}{}
+		for _, uuid := range uuids.Meetings {
+			recs, err := s.store.GetRecords(ctx, uuid)
+			if err != nil {
+				log.Printf("[ERROR] failed to get records, %v", err)
+				rw.WriteHeader(http.StatusInternalServerError)
+				return
+			}
+			if len(recs) == 0 {
 				resp["result"] = "pending"
-				log.Printf("[DEBUG] Pending caused by status %s - %s", rec.Id, rec.Status)
+				log.Printf("[DEBUG] Pending caused by no records for uuid: %s", uuid)
 				json.NewEncoder(rw).Encode(resp)
 				return
 			}
 
-			if info, err := os.Stat(rec.FilePath); err == nil {
-				if info.Size() != int64(rec.FileSize) {
+			log.Printf("[DEBUG] Checking recs: \r\n %+v", recs)
+			for _, rec := range recs {
+
+				if rec.Status != model.StatusDownloaded {
 					resp["result"] = "pending"
-					log.Printf("[DEBUG] Pending caused by filesize %s - %d", rec.Id, rec.FileSize)
+					log.Printf("[DEBUG] Pending caused by status %s - %s", rec.Id, rec.Status)
 					json.NewEncoder(rw).Encode(resp)
 					return
 				}
+
+				if info, err := os.Stat(rec.FilePath); err == nil {
+					if info.Size() != int64(rec.FileSize) {
+						resp["result"] = "pending"
+						log.Printf("[DEBUG] Pending caused by filesize %s - %d", rec.Id, rec.FileSize)
+						json.NewEncoder(rw).Encode(resp)
+						return
+					}
+				}
 			}
 		}
-	}
 
-	log.Printf("[DEBUG] All records are downloaded, returning ok")
-	resp["result"] = "ok"
-	json.NewEncoder(rw).Encode(resp)
+		log.Printf("[DEBUG] All records are downloaded, returning ok")
+		resp["result"] = "ok"
+		json.NewEncoder(rw).Encode(resp)
+	}
 }
 
 // checkConsistencyHandler is called to check if every record has a corresponding file and file size is correct
-func (s *Server) checkConsistencyHandler(rw http.ResponseWriter, r *http.Request) {
-	checked, err := s.repo.CheckConsistency()
-	response := map[string]interface{}{"checked": checked, "error": err}
-	rw.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(rw).Encode(response)
+func (s *Server) checkConsistencyHandler(ctx context.Context) func(rw http.ResponseWriter, r *http.Request) {
+	return func(rw http.ResponseWriter, r *http.Request) {
+		checked, err := s.repo.CheckConsistency(ctx)
+		response := map[string]interface{}{"checked": checked, "error": err}
+		rw.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(rw).Encode(response)
+	}
 }

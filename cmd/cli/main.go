@@ -47,7 +47,7 @@ func (s *Commander) Run(ctx context.Context, opts Options) error {
 	switch opts.Cmd {
 	case "check":
 		log.Printf("[INFO] starting CheckConsistency")
-		checked, err := r.CheckConsistency()
+		checked, err := r.CheckConsistency(ctx)
 		if err != nil {
 			err := fmt.Errorf("checkConsistency: %d, %w", checked, err)
 			return err
@@ -99,7 +99,7 @@ func (s *Commander) Run(ctx context.Context, opts Options) error {
 			}
 			log.Printf("[DEBUG] Syncing meetings - %d in feed", len(meetings))
 
-			err = r.SyncMeetings(&meetings)
+			err = r.SyncMeetings(ctx, &meetings)
 			if err != nil {
 				log.Printf("[ERROR] failed to sync meetings, %v, retrying in 30 sec", err)
 				select {
@@ -119,7 +119,7 @@ func (s *Commander) Run(ctx context.Context, opts Options) error {
 				return fmt.Errorf("downloading terminated early: %w", ctx.Err())
 			default:
 			}
-			err = r.DownloadOnce()
+			err = r.DownloadOnce(ctx)
 			if err == repo.ErrNoQueuedRecords {
 				if err == lastError {
 					log.Printf("[DEBUG] no queued records, exiting")

@@ -44,7 +44,7 @@ func Test_FreeUpSpace(t *testing.T) {
 	repo.prepareDestination(cfg.Storage.Repository)
 
 	// Test when there is enough free space
-	store.Cleanup()
+	store.Cleanup(ctx)
 	timeNow := time.Now()
 	testRecords := []model.Record{
 		{
@@ -98,7 +98,7 @@ func Test_FreeUpSpace(t *testing.T) {
 		Records:   testRecords,
 	}
 
-	err = store.SaveMeeting(testMeeting)
+	err = store.SaveMeeting(ctx, testMeeting)
 	assert.NoError(t, err)
 
 	time.Sleep(1 * time.Second)
@@ -109,11 +109,11 @@ func Test_FreeUpSpace(t *testing.T) {
 	log.Println("Free space before test: ", usage.Free)
 	cfg.Storage.KeepFreeSpace = usage.Free - 1
 
-	deleted, err := repo.freeUpSpace()
+	deleted, err := repo.freeUpSpace(ctx)
 	assert.NoError(t, err)
 	assert.Equal(t, 0, deleted)
 
-	records, err := store.GetRecordsByStatus(model.StatusDeleted)
+	records, err := store.GetRecordsByStatus(ctx, model.StatusDeleted)
 	assert.NoError(t, err)
 	assert.Equal(t, 0, len(records))
 
@@ -124,7 +124,7 @@ func Test_FreeUpSpace(t *testing.T) {
 	}
 
 	// Testing happy path - when there is not enough free space
-	store.Cleanup()
+	store.Cleanup(ctx)
 
 	timeNow = time.Now()
 	testRecords = []model.Record{
@@ -187,14 +187,14 @@ func Test_FreeUpSpace(t *testing.T) {
 		Records:   testRecords,
 	}
 
-	err = store.SaveMeeting(testMeeting)
+	err = store.SaveMeeting(ctx, testMeeting)
 	assert.NoError(t, err)
 
-	deleted, err = repo.freeUpSpace()
+	deleted, err = repo.freeUpSpace(ctx)
 	assert.NoError(t, err)
 	assert.Equal(t, 3, deleted)
 
-	records, err = store.GetRecordsByStatus(model.StatusDeleted)
+	records, err = store.GetRecordsByStatus(ctx, model.StatusDeleted)
 	assert.NoError(t, err)
 	assert.Equal(t, 3, len(records))
 
