@@ -31,7 +31,6 @@ type ZoomClient struct {
 	cfg    *config.Client
 	client http.Client
 	token  *AccessToken
-	mx     sync.Mutex
 }
 
 func NewZoomClient(cfg config.Client) *ZoomClient {
@@ -84,8 +83,10 @@ func (z *ZoomClient) Authorize() error {
 
 // GetToken - get token, if token is expired, re-authorize
 func (z *ZoomClient) GetToken() (*AccessToken, error) {
-	z.mx.Lock()
-	defer z.mx.Unlock()
+	var mx sync.Mutex
+
+	mx.Lock()
+	defer mx.Unlock()
 
 	if z.token == nil || z.token.ExpiresAt.Before(time.Now()) {
 		if err := z.Authorize(); err != nil {

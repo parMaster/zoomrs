@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"log"
 	"os"
-	"sync"
 	"testing"
 	"time"
 
@@ -72,8 +71,6 @@ func Test_ZoomClient(t *testing.T) {
 	assert.Nil(t, token)
 	// t.Logf("Error: %v", err)
 }
-
-var m sync.Mutex
 
 // Tests a specific race condition in GetToken()
 func Test_ZoomGetTokenRaceTest(t *testing.T) {
