@@ -28,7 +28,7 @@ var (
 // Client is an interface for the Zoom API client
 type Client interface {
 	Authorize() error
-	GetMeetings(daysAgo int) ([]model.Meeting, error)
+	GetMeetings(ctx context.Context, daysAgo int) ([]model.Meeting, error)
 	GetToken() (*client.AccessToken, error)
 	DeleteMeetingRecordings(meetingId string, delete bool) error
 }
@@ -82,7 +82,7 @@ func (r *Repository) SyncJob(ctx context.Context) {
 
 	ticker := time.NewTicker(60 * time.Minute)
 	for {
-		meetings, err := r.client.GetMeetings(1)
+		meetings, err := r.client.GetMeetings(ctx, 1)
 		if err != nil {
 			log.Printf("[ERROR] failed to get meetings, %v, retrying in 30 sec", err)
 
@@ -333,7 +333,7 @@ func (r *Repository) meetingRecordsLoaded(ctx context.Context, meetingId string)
 func (r *Repository) CleanupJob(ctx context.Context, daysAgo int) {
 	var retry int
 	for {
-		meetings, err := r.client.GetMeetings(daysAgo)
+		meetings, err := r.client.GetMeetings(ctx, daysAgo)
 		if err != nil {
 			log.Printf("[ERROR] failed to get meetings, %v", err)
 			select {
@@ -392,7 +392,12 @@ func (r *Repository) CleanupJob(ctx context.Context, daysAgo int) {
 					} else {
 						deleted++
 					}
-					time.Sleep(r.cfg.Client.RateLimitingDelay.Light)
+					select {
+					case <-ctx.Done():
+						return
+					case <-time.After(r.cfg.Client.RateLimitingDelay.Light):
+						continue
+					}
 				}
 			}
 			log.Printf("[INFO] Deleted %d out of %d meetings", deleted, len(meetings))

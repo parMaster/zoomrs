@@ -87,7 +87,7 @@ func (s *Commander) Run(ctx context.Context, opts Options) error {
 			default:
 			}
 
-			meetings, err := s.client.GetMeetings(opts.Days)
+			meetings, err := s.client.GetMeetings(ctx, opts.Days)
 			if err != nil {
 				log.Printf("[ERROR] failed to get meetings, %v, retrying in 30 sec", err)
 				select {

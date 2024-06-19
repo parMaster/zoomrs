@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"log"
 	"time"
 
@@ -18,7 +19,10 @@ func (s *Commander) ShowUI() {
 	from := time.Now().AddDate(0, 0, -1*7)
 	to := time.Now().AddDate(0, 0, 0)
 
-	m, err := s.client.GetIntervalMeetings(from, to)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	m, err := s.client.GetIntervalMeetings(ctx, from, to)
 	if err != nil {
 		log.Printf("[ERROR] GetIntervalMeetings: %e", err)
 	}

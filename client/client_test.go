@@ -36,12 +36,13 @@ func Test_ZoomClient(t *testing.T) {
 	err = c.Authorize()
 	assert.NoError(t, err)
 
-	meetings, err := c.GetMeetings(1)
+	ctx := context.Background()
+	meetings, err := c.GetMeetings(ctx, 1)
 	assert.NoError(t, err)
 	assert.NotNil(t, meetings)
 
 	// GetIntervalMeetings test
-	meetingsInterval, err := c.GetIntervalMeetings(time.Now().AddDate(0, 0, -1), time.Now().AddDate(0, 0, -1))
+	meetingsInterval, err := c.GetIntervalMeetings(ctx, time.Now().AddDate(0, 0, -1), time.Now().AddDate(0, 0, -1))
 	assert.NoError(t, err)
 	assert.NotNil(t, meetingsInterval)
 	assert.Equal(t, len(meetings), len(meetingsInterval))

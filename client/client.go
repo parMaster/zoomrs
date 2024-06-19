@@ -47,7 +47,8 @@ func (z *ZoomClient) Authorize() error {
 	params.Add(`grant_type`, `account_credentials`)
 	params.Add(`account_id`, z.cfg.AccountId)
 
-	req, err := http.NewRequest(http.MethodPost, "https://zoom.us/oauth/token", strings.NewReader(params.Encode()))
+	req, err := http.NewRequest(http.MethodPost, "https://zoom.us/oauth/token",
+		strings.NewReader(params.Encode()))
 	if err != nil {
 		return err
 	}
@@ -63,7 +64,8 @@ func (z *ZoomClient) Authorize() error {
 	defer res.Body.Close()
 
 	if res.StatusCode != http.StatusOK {
-		return fmt.Errorf("unable to authorize with account id: %s and client id: %s, status %d", z.cfg.AccountId, z.cfg.Id, res.StatusCode)
+		return fmt.Errorf("unable to authorize with account id: %s and client id: %s, status %d",
+			z.cfg.AccountId, z.cfg.Id, res.StatusCode)
 	}
 
 	if err := json.NewDecoder(res.Body).Decode(&z.token); err != nil {
@@ -98,16 +100,16 @@ func (z *ZoomClient) GetToken() (*AccessToken, error) {
 
 // GetMeetings - get meetings for a given day (daysAgo = 0 for today, 1 for yestarday, etc.)
 // Medium rate limit API
-func (z *ZoomClient) GetMeetings(daysAgo int) ([]model.Meeting, error) {
+func (z *ZoomClient) GetMeetings(ctx context.Context, daysAgo int) ([]model.Meeting, error) {
 	from := time.Now().AddDate(0, 0, -1*daysAgo)
 	to := time.Now().AddDate(0, 0, -1*daysAgo)
 
-	return z.GetIntervalMeetings(from, to)
+	return z.GetIntervalMeetings(ctx, from, to)
 }
 
 // GetIntervalMeetings - get meetings for a from-to interval
 // Medium rate limit API
-func (z *ZoomClient) GetIntervalMeetings(from, to time.Time) ([]model.Meeting, error) {
+func (z *ZoomClient) GetIntervalMeetings(ctx context.Context, from, to time.Time) ([]model.Meeting, error) {
 	_, err := z.GetToken()
 	if err != nil {
 		return nil, errors.Join(fmt.Errorf("unable to get token"), err)
@@ -118,7 +120,8 @@ func (z *ZoomClient) GetIntervalMeetings(from, to time.Time) ([]model.Meeting, e
 	params.Add(`from`, from.Format("2006-01-02"))
 	params.Add(`to`, to.Format("2006-01-02"))
 	log.Printf("[DEBUG] initial params = %s", params.Encode())
-	req, err := http.NewRequest(http.MethodGet, "https://api.zoom.us/v2/users/me/recordings?"+params.Encode(), nil)
+	req, err := http.NewRequest(http.MethodGet,
+		"https://api.zoom.us/v2/users/me/recordings?"+params.Encode(), nil)
 	if err != nil {
 		return nil, err
 	}
@@ -139,7 +142,8 @@ func (z *ZoomClient) GetIntervalMeetings(from, to time.Time) ([]model.Meeting, e
 		defer res.Body.Close()
 
 		if res.StatusCode != http.StatusOK {
-			return nil, fmt.Errorf("unable to authorize with account id: %s and client id: %s, status %d, message: %s", z.cfg.AccountId, z.cfg.Id, res.StatusCode, res.Body)
+			return nil, fmt.Errorf(`unable to authorize with account id: %s and client id: %s,
+			status %d, message: %s`, z.cfg.AccountId, z.cfg.Id, res.StatusCode, res.Body)
 		}
 
 		recordings := &model.Recordings{}
@@ -155,7 +159,13 @@ func (z *ZoomClient) GetIntervalMeetings(from, to time.Time) ([]model.Meeting, e
 		}
 		log.Printf("[DEBUG] recordings.NextPageToken = %v", recordings.NextPageToken)
 		params.Set(`next_page_token`, recordings.NextPageToken)
-		time.Sleep(z.cfg.RateLimitingDelay.Medium) // avoid rate limit
+
+		select {
+		case <-time.After(z.cfg.RateLimitingDelay.Medium):
+			continue
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
 	}
 
 	return meetings, nil
@@ -163,14 +173,14 @@ func (z *ZoomClient) GetIntervalMeetings(from, to time.Time) ([]model.Meeting, e
 
 // GetAllMeetings - get all meetings going from today back in the past by 30 days chunks
 // as soon as we hit 2 empty chunks in a row, we assume there are no earlier meetings
-func (z *ZoomClient) GetAllMeetings() ([]model.Meeting, error) {
+func (z *ZoomClient) GetAllMeetings(ctx context.Context) ([]model.Meeting, error) {
 	meetings := []model.Meeting{}
 	var i, empty int
 	for {
 		i++
 		from := time.Now().AddDate(0, 0, -1*i*30)   // from 30 days ago,    60 days ago, etc.
 		to := time.Now().AddDate(0, 0, -1*(i-1)*30) //         to today, to 30 days ago, etc.
-		m, err := z.GetIntervalMeetings(from, to)
+		m, err := z.GetIntervalMeetings(ctx, from, to)
 		if err != nil {
 			return nil, errors.Join(fmt.Errorf("unable to get interval meetings"), err)
 		}
@@ -194,7 +204,7 @@ func (z *ZoomClient) GetAllMeetingsWithRetry(ctx context.Context) ([]model.Meeti
 	var err error
 
 	for i := 0; i < 10; i++ {
-		meetings, err = z.GetAllMeetings()
+		meetings, err = z.GetAllMeetings(ctx)
 		if err != nil {
 			delay := 30 * time.Duration(i) * time.Second
 			log.Printf("[ERROR] failed to get meetings, %v, retrying in %s sec", err, delay)
@@ -203,7 +213,7 @@ func (z *ZoomClient) GetAllMeetingsWithRetry(ctx context.Context) ([]model.Meeti
 			case <-time.After(delay):
 				continue
 			case <-ctx.Done():
-				return nil, ctx.Err() // Return if the context is cancelled
+				return nil, ctx.Err()
 			}
 		}
 		break
@@ -228,7 +238,8 @@ func (z *ZoomClient) GetCloudStorageReport(from, to string) (*model.CloudRecordi
 	params.Add(`from`, from)
 	params.Add(`to`, to)
 	log.Printf("[DEBUG] initial params = %s", params.Encode())
-	req, err := http.NewRequest(http.MethodGet, "https://api.zoom.us/v2/report/cloud_recording?"+params.Encode(), nil)
+	req, err := http.NewRequest(http.MethodGet, "https://api.zoom.us/v2/report/cloud_recording?"+
+		params.Encode(), nil)
 	if err != nil {
 		return nil, err
 	}
@@ -244,7 +255,8 @@ func (z *ZoomClient) GetCloudStorageReport(from, to string) (*model.CloudRecordi
 	defer res.Body.Close()
 
 	if res.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("unable to get cloud storage, status %d, message: %s", res.StatusCode, res.Body)
+		return nil, fmt.Errorf("unable to get cloud storage, status %d, message: %s",
+			res.StatusCode, res.Body)
 	}
 
 	report := &model.CloudRecordingReport{}
@@ -280,8 +292,10 @@ func (z *ZoomClient) DeleteMeetingRecordings(meetingId string, delete bool) erro
 	}
 	params.Add(`action`, action)
 	// https://developers.zoom.us/docs/meeting-sdk/apis/#operation/recordingDelete
-	// If a UUID starts with "/" or contains "//" (example: "/ajXp112QmuoKj4854875=="), you must double encode the UUID before making an API request.
-	q := fmt.Sprintf("https://api.zoom.us/v2/meetings/%s/recordings?%s", url.QueryEscape(url.QueryEscape(meetingId)), params.Encode())
+	// If a UUID starts with "/" or contains "//" (example: "/ajXp112QmuoKj4854875=="),
+	// you must double encode the UUID before making an API request.
+	q := fmt.Sprintf("https://api.zoom.us/v2/meetings/%s/recordings?%s",
+		url.QueryEscape(url.QueryEscape(meetingId)), params.Encode())
 	log.Printf("[DEBUG] deleting with url = %s, params = %s", q, params.Encode())
 	req, err := http.NewRequest(http.MethodDelete, q, nil)
 	if err != nil {
@@ -298,19 +312,21 @@ func (z *ZoomClient) DeleteMeetingRecordings(meetingId string, delete bool) erro
 	}
 	defer res.Body.Close()
 
-	// 404 StatusNotFound happens when meeting is already deleted or trashed, so we ignore the error
+	// 404 StatusNotFound happens when meeting is already deleted or trashed, so ignore the error
 	if res.StatusCode != http.StatusNoContent && res.StatusCode != http.StatusNotFound {
-		return fmt.Errorf("unable to delete recordings for meeting id: %s, status %d, message: %s", meetingId, res.StatusCode, res.Body)
+		return fmt.Errorf("unable to delete recordings for meeting id: %s, status %d, message: %s",
+			meetingId, res.StatusCode, res.Body)
 	}
 
 	return nil
 }
 
-func (z *ZoomClient) DeleteRecordingsOverCapacity(ctx context.Context, cloudStorageCap model.FileSize) (deleted int, err error) {
-	if cloudStorageCap == 0 {
+func (z *ZoomClient) DeleteRecordingsOverCapacity(ctx context.Context, cap model.FileSize,
+) (deleted int, err error) {
+	if cap == 0 {
 		return 0, errors.New("cloud storage capacity is not configured")
 	}
-	log.Printf("[DEBUG] cloudStorageCap is set to: %s", cloudStorageCap)
+	log.Printf("[DEBUG] cloudStorageCap is set to: %s", cap)
 
 	meetings, err := z.GetAllMeetingsWithRetry(ctx)
 	if err != nil {
@@ -331,14 +347,21 @@ func (z *ZoomClient) DeleteRecordingsOverCapacity(ctx context.Context, cloudStor
 			sizeAccum += r.FileSize
 		}
 
-		if sizeAccum > cloudStorageCap {
-			log.Printf("[DEBUG] cap reached, cloud used: %s \t deleting uuid: %s", sizeAccum, m.UUID)
+		if sizeAccum > cap {
+			log.Printf("[DEBUG] cap reached, cloud used: %s \t deleting: %s", sizeAccum, m.UUID)
 			if err := z.DeleteMeetingRecordings(m.UUID, true); err != nil {
 				log.Printf("[ERROR] deleting uuid: %s, %v", m.UUID, err)
 			} else {
 				deleted++
 			}
-			time.Sleep(z.cfg.RateLimitingDelay.Light)
+
+			select {
+			case <-time.After(z.cfg.RateLimitingDelay.Light):
+				continue
+			case <-ctx.Done():
+				return deleted, ctx.Err()
+			}
+
 		} else {
 			log.Printf("[DEBUG] uuid: %s \t cloud used: %s", m.UUID, sizeAccum)
 		}
