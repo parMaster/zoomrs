@@ -57,18 +57,21 @@ func (z *ZoomClient) Authorize() error {
 	req.Header.Add(`Host`, "zoom.us")
 	req.Header.Add(`Content-Type`, "application/x-www-form-urlencoded")
 
-	res, err := z.client.Do(req)
+	resp, err := z.client.Do(req)
 	if err != nil {
 		return err
 	}
-	defer res.Body.Close()
+	defer func() {
+		err := resp.Body.Close()
+		log.Printf("[ERROR] failed to close response: %v", err)
+	}()
 
-	if res.StatusCode != http.StatusOK {
+	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("unable to authorize with account id: %s and client id: %s, status %d",
-			z.cfg.AccountId, z.cfg.Id, res.StatusCode)
+			z.cfg.AccountId, z.cfg.Id, resp.StatusCode)
 	}
 
-	if err := json.NewDecoder(res.Body).Decode(&z.token); err != nil {
+	if err := json.NewDecoder(resp.Body).Decode(&z.token); err != nil {
 		return err
 	}
 
@@ -135,20 +138,23 @@ func (z *ZoomClient) GetIntervalMeetings(ctx context.Context, from, to time.Time
 	for {
 		log.Printf("[DEBUG] params = %s", params.Encode())
 		req.URL.RawQuery = params.Encode()
-		res, err := z.client.Do(req)
+		resp, err := z.client.Do(req)
 		if err != nil {
 			return nil, err
 		}
-		defer res.Body.Close()
+		defer func() {
+			err := resp.Body.Close()
+			log.Printf("[ERROR] failed to close response: %v", err)
+		}()
 
-		if res.StatusCode != http.StatusOK {
+		if resp.StatusCode != http.StatusOK {
 			return nil, fmt.Errorf(`unable to authorize with account id: %s and client id: %s,
-			status %d, message: %s`, z.cfg.AccountId, z.cfg.Id, res.StatusCode, res.Body)
+			status %d, message: %s`, z.cfg.AccountId, z.cfg.Id, resp.StatusCode, resp.Body)
 		}
 
 		recordings := &model.Recordings{}
 
-		if err := json.NewDecoder(res.Body).Decode(recordings); err != nil {
+		if err := json.NewDecoder(resp.Body).Decode(recordings); err != nil {
 			return nil, err
 		}
 
@@ -248,19 +254,22 @@ func (z *ZoomClient) GetCloudStorageReport(from, to string) (*model.CloudRecordi
 	req.Header.Add(`Host`, "zoom.us")
 	req.Header.Add(`Content-Type`, "application/json")
 
-	res, err := z.client.Do(req)
+	resp, err := z.client.Do(req)
 	if err != nil {
 		return nil, err
 	}
-	defer res.Body.Close()
+	defer func() {
+		err := resp.Body.Close()
+		log.Printf("[ERROR] failed to close response: %v", err)
+	}()
 
-	if res.StatusCode != http.StatusOK {
+	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("unable to get cloud storage, status %d, message: %s",
-			res.StatusCode, res.Body)
+			resp.StatusCode, resp.Body)
 	}
 
 	report := &model.CloudRecordingReport{}
-	if err := json.NewDecoder(res.Body).Decode(report); err != nil {
+	if err := json.NewDecoder(resp.Body).Decode(report); err != nil {
 		return nil, err
 	}
 
@@ -306,16 +315,19 @@ func (z *ZoomClient) DeleteMeetingRecordings(meetingId string, delete bool) erro
 	req.Header.Add(`Host`, "zoom.us")
 	req.Header.Add(`Content-Type`, "application/json")
 
-	res, err := z.client.Do(req)
+	resp, err := z.client.Do(req)
 	if err != nil {
 		return err
 	}
-	defer res.Body.Close()
+	defer func() {
+		err := resp.Body.Close()
+		log.Printf("[ERROR] failed to close response: %v", err)
+	}()
 
 	// 404 StatusNotFound happens when meeting is already deleted or trashed, so ignore the error
-	if res.StatusCode != http.StatusNoContent && res.StatusCode != http.StatusNotFound {
+	if resp.StatusCode != http.StatusNoContent && resp.StatusCode != http.StatusNotFound {
 		return fmt.Errorf("unable to delete recordings for meeting id: %s, status %d, message: %s",
-			meetingId, res.StatusCode, res.Body)
+			meetingId, resp.StatusCode, resp.Body)
 	}
 
 	return nil
