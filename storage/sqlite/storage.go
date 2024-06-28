@@ -22,6 +22,12 @@ func NewStorage(ctx context.Context, path string) (*SQLiteStorage, error) {
 		return nil, err
 	}
 
+	// ensure the connection is open
+	err = sqliteDatabase.PingContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+
 	go func() {
 		<-ctx.Done()
 		sqliteDatabase.Close()
