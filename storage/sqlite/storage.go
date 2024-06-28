@@ -156,6 +156,10 @@ func (s *SQLiteStorage) GetRecords(ctx context.Context, UUID string) ([]model.Re
 		}
 		records = append(records, record)
 	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
 	return records, nil
 }
 
@@ -180,6 +184,10 @@ func (s *SQLiteStorage) GetMeetings(ctx context.Context) ([]model.Meeting, error
 		}
 		meetings = append(meetings, meeting)
 	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
 	return meetings, nil
 }
 
@@ -215,6 +223,11 @@ func (s *SQLiteStorage) ListMeetings(ctx context.Context) ([]model.Meeting, erro
 		}
 		meetings = append(meetings, meeting)
 	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
 	return meetings, nil
 }
 
@@ -304,6 +317,10 @@ func (s *SQLiteStorage) GetRecordsByStatus(ctx context.Context, status model.Rec
 		}
 		records = append(records, record)
 	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
 	return records, nil
 }
 
@@ -340,6 +357,9 @@ func (s *SQLiteStorage) Stats(ctx context.Context) (map[model.RecordStatus]inter
 			"size_gb": size_gb,
 			"count":   count,
 		}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
 	}
 	return stats, nil
 }
