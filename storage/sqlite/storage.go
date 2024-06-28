@@ -132,7 +132,10 @@ func (s *SQLiteStorage) GetRecords(ctx context.Context, UUID string) ([]model.Re
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() {
+		err := rows.Close()
+		log.Printf("[ERROR] failed to close rows: %v", err)
+	}()
 
 	var records []model.Record
 	for rows.Next() {
@@ -163,7 +166,10 @@ func (s *SQLiteStorage) GetMeetings(ctx context.Context) ([]model.Meeting, error
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() {
+		err := rows.Close()
+		log.Printf("[ERROR] failed to close rows: %v", err)
+	}()
 
 	var meetings []model.Meeting
 	for rows.Next() {
@@ -180,12 +186,25 @@ func (s *SQLiteStorage) GetMeetings(ctx context.Context) ([]model.Meeting, error
 // ListMeetings returns a list of meetings ready to be shown in the UI
 // Meeting must have at least one recording of type 'MP4' with status =='downloaded'
 func (s *SQLiteStorage) ListMeetings(ctx context.Context) ([]model.Meeting, error) {
-	q := "SELECT DISTINCT m.* FROM `meetings` m JOIN `records` r ON m.uuid = r.meetingId WHERE status = 'downloaded' AND r.fileExtension = 'MP4' ORDER BY startTime DESC"
+	q := `
+		SELECT DISTINCT m.*
+		FROM
+			meetings m JOIN
+			records r ON m.uuid = r.meetingId
+		WHERE
+			status = 'downloaded' AND
+			r.fileExtension = 'MP4'
+		ORDER BY
+			startTime DESC;
+		`
 	rows, err := s.DB.QueryContext(ctx, q)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() {
+		err := rows.Close()
+		log.Printf("[ERROR] failed to close rows: %v", err)
+	}()
 
 	var meetings []model.Meeting
 	for rows.Next() {
@@ -242,7 +261,8 @@ func (s *SQLiteStorage) GetQueuedRecord(ctx context.Context) (*model.Record, err
 		&record.DownloadURL,
 		&record.PlayURL,
 		&record.Status,
-		&record.FilePath)
+		&record.FilePath,
+	)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return nil, storage.ErrNoRows
@@ -259,8 +279,10 @@ func (s *SQLiteStorage) GetRecordsByStatus(ctx context.Context, status model.Rec
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-
+	defer func() {
+		err := rows.Close()
+		log.Printf("[ERROR] failed to close rows: %v", err)
+	}()
 	var records []model.Record
 
 	for rows.Next() {
@@ -275,7 +297,8 @@ func (s *SQLiteStorage) GetRecordsByStatus(ctx context.Context, status model.Rec
 			&record.DownloadURL,
 			&record.PlayURL,
 			&record.Status,
-			&record.FilePath)
+			&record.FilePath,
+		)
 		if err != nil {
 			return nil, err
 		}
@@ -286,12 +309,21 @@ func (s *SQLiteStorage) GetRecordsByStatus(ctx context.Context, status model.Rec
 
 // Stats returns the number of records in each status
 func (s *SQLiteStorage) Stats(ctx context.Context) (map[model.RecordStatus]interface{}, error) {
-	q := "select sum(fileSize)/1048576 as size_mb, sum(fileSize)/1073741824 as size_gb, count(id) as count, status FROM records group by status;"
+	q := `SELECT
+			sum(fileSize)/1048576 as size_mb,
+			sum(fileSize)/1073741824 as size_gb,
+			count(id) as count,
+			status
+		FROM records
+		GROUP BY status;`
 	rows, err := s.DB.QueryContext(ctx, q)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() {
+		err := rows.Close()
+		log.Printf("[ERROR] failed to close rows: %v", err)
+	}()
 
 	stats := make(map[model.RecordStatus]interface{})
 	for rows.Next() {
@@ -303,7 +335,11 @@ func (s *SQLiteStorage) Stats(ctx context.Context) (map[model.RecordStatus]inter
 		if err != nil {
 			return nil, err
 		}
-		stats[model.RecordStatus(status)] = map[string]interface{}{"size_mb": size_mb, "size_gb": size_gb, "count": count}
+		stats[model.RecordStatus(status)] = map[string]interface{}{
+			"size_mb": size_mb,
+			"size_gb": size_gb,
+			"count":   count,
+		}
 	}
 	return stats, nil
 }
