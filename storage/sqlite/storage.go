@@ -133,8 +133,9 @@ func (s *SQLiteStorage) GetRecords(ctx context.Context, UUID string) ([]model.Re
 		return nil, err
 	}
 	defer func() {
-		err := rows.Close()
-		log.Printf("[ERROR] failed to close rows: %v", err)
+		if err := rows.Close(); err != nil {
+			log.Printf("[ERROR] failed to close rows: %v", err)
+		}
 	}()
 
 	var records []model.Record
@@ -171,8 +172,9 @@ func (s *SQLiteStorage) GetMeetings(ctx context.Context) ([]model.Meeting, error
 		return nil, err
 	}
 	defer func() {
-		err := rows.Close()
-		log.Printf("[ERROR] failed to close rows: %v", err)
+		if err := rows.Close(); err != nil {
+			log.Printf("[ERROR] failed to close rows: %v", err)
+		}
 	}()
 
 	var meetings []model.Meeting
@@ -210,8 +212,9 @@ func (s *SQLiteStorage) ListMeetings(ctx context.Context) ([]model.Meeting, erro
 		return nil, err
 	}
 	defer func() {
-		err := rows.Close()
-		log.Printf("[ERROR] failed to close rows: %v", err)
+		if err := rows.Close(); err != nil {
+			log.Printf("[ERROR] failed to close rows: %v", err)
+		}
 	}()
 
 	var meetings []model.Meeting
@@ -293,8 +296,9 @@ func (s *SQLiteStorage) GetRecordsByStatus(ctx context.Context, status model.Rec
 		return nil, err
 	}
 	defer func() {
-		err := rows.Close()
-		log.Printf("[ERROR] failed to close rows: %v", err)
+		if err := rows.Close(); err != nil {
+			log.Printf("[ERROR] failed to close rows: %v", err)
+		}
 	}()
 	var records []model.Record
 
@@ -338,8 +342,9 @@ func (s *SQLiteStorage) Stats(ctx context.Context) (map[model.RecordStatus]inter
 		return nil, err
 	}
 	defer func() {
-		err := rows.Close()
-		log.Printf("[ERROR] failed to close rows: %v", err)
+		if err := rows.Close(); err != nil {
+			log.Printf("[ERROR] failed to close rows: %v", err)
+		}
 	}()
 
 	stats := make(map[model.RecordStatus]interface{})
