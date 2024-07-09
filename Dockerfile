@@ -5,7 +5,7 @@
 #	docker run -it --rm -p 8080:8080 -v ./config/config.yml:/app/config.yml zoomrs
 #
 # Build stage
-FROM golang:1.22-bullseye as base
+FROM golang:1.22-bullseye AS base
 
 RUN adduser \
   --disabled-password \
