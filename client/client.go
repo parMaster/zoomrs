@@ -62,8 +62,9 @@ func (z *ZoomClient) Authorize() error {
 		return err
 	}
 	defer func() {
-		err := resp.Body.Close()
-		log.Printf("[ERROR] failed to close response: %v", err)
+		if err := resp.Body.Close(); err != nil {
+			log.Printf("[ERROR] failed to close response: %v", err)
+		}
 	}()
 
 	if resp.StatusCode != http.StatusOK {
@@ -143,8 +144,9 @@ func (z *ZoomClient) GetIntervalMeetings(ctx context.Context, from, to time.Time
 			return nil, err
 		}
 		defer func() {
-			err := resp.Body.Close()
-			log.Printf("[ERROR] failed to close response: %v", err)
+			if err := resp.Body.Close(); err != nil {
+				log.Printf("[ERROR] failed to close response: %v", err)
+			}
 		}()
 
 		if resp.StatusCode != http.StatusOK {
@@ -259,8 +261,9 @@ func (z *ZoomClient) GetCloudStorageReport(from, to string) (*model.CloudRecordi
 		return nil, err
 	}
 	defer func() {
-		err := resp.Body.Close()
-		log.Printf("[ERROR] failed to close response: %v", err)
+		if err := resp.Body.Close(); err != nil {
+			log.Printf("[ERROR] failed to close response: %v", err)
+		}
 	}()
 
 	if resp.StatusCode != http.StatusOK {
@@ -320,8 +323,9 @@ func (z *ZoomClient) DeleteMeetingRecordings(meetingId string, delete bool) erro
 		return err
 	}
 	defer func() {
-		err := resp.Body.Close()
-		log.Printf("[ERROR] failed to close response: %v", err)
+		if err := resp.Body.Close(); err != nil {
+			log.Printf("[ERROR] failed to close response: %v", err)
+		}
 	}()
 
 	// 404 StatusNotFound happens when meeting is already deleted or trashed, so ignore the error
