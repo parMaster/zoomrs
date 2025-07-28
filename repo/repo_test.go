@@ -11,13 +11,11 @@ import (
 	"github.com/parMaster/zoomrs/config"
 	"github.com/parMaster/zoomrs/storage/model"
 	"github.com/parMaster/zoomrs/storage/sqlite"
-	"github.com/shirou/gopsutil/v3/disk"
+	"github.com/shirou/gopsutil/v4/disk"
 	"github.com/stretchr/testify/assert"
 )
 
 func Test_FreeUpSpace(t *testing.T) {
-	// Setting the things up
-
 	cfgPath := "../config/config_example.yml"
 	// check if config file exists
 	if _, err := os.Stat(cfgPath); os.IsNotExist(err) {

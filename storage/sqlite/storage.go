@@ -329,7 +329,7 @@ func (s *SQLiteStorage) GetRecordsByStatus(ctx context.Context, status model.Rec
 }
 
 // Stats returns the number of records in each status
-func (s *SQLiteStorage) Stats(ctx context.Context) (map[model.RecordStatus]interface{}, error) {
+func (s *SQLiteStorage) Stats(ctx context.Context) (map[model.RecordStatus]any, error) {
 	q := `SELECT
 			sum(fileSize)/1048576 as size_mb,
 			sum(fileSize)/1073741824 as size_gb,
@@ -347,7 +347,7 @@ func (s *SQLiteStorage) Stats(ctx context.Context) (map[model.RecordStatus]inter
 		}
 	}()
 
-	stats := make(map[model.RecordStatus]interface{})
+	stats := make(map[model.RecordStatus]any)
 	for rows.Next() {
 		var size_mb int
 		var size_gb int
@@ -357,7 +357,7 @@ func (s *SQLiteStorage) Stats(ctx context.Context) (map[model.RecordStatus]inter
 		if err != nil {
 			return nil, err
 		}
-		stats[model.RecordStatus(status)] = map[string]interface{}{
+		stats[model.RecordStatus(status)] = map[string]any{
 			"size_mb": size_mb,
 			"size_gb": size_gb,
 			"count":   count,

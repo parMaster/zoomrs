@@ -9,7 +9,6 @@ import (
 	"log"
 	"net/http"
 	"os"
-	"strconv"
 	"strings"
 	"time"
 
@@ -19,7 +18,7 @@ import (
 	"github.com/parMaster/zoomrs/storage"
 	"github.com/parMaster/zoomrs/storage/model"
 	"github.com/parMaster/zoomrs/web"
-	"github.com/shirou/gopsutil/v3/disk"
+	"github.com/shirou/gopsutil/v4/disk"
 )
 
 func (s *Server) router(ctx context.Context) http.Handler {
@@ -130,7 +129,7 @@ func (s *Server) statusHandler(ctx context.Context) func(rw http.ResponseWriter,
 			status = "OK"
 		}
 
-		resp := map[string]interface{}{
+		resp := map[string]any{
 			"status": status,
 			"stats":  stats,
 		}
@@ -171,18 +170,20 @@ func (s *Server) statusHandler(ctx context.Context) func(rw http.ResponseWriter,
 			cloudStorageReport = cachedCloud.(*model.CloudRecordingReport)
 		}
 
+		// log.Printf("[DEBUG] cloudStorageReport: %+v", cloudStorageReport)
+
 		// cloud storage stats
 		var cloud model.CloudRecordingStorage
 		if cloudStorageReport != nil && cloudStorageReport.CloudRecordingStorage != nil && len(cloudStorageReport.CloudRecordingStorage) > 0 {
 
 			cloud = cloudStorageReport.CloudRecordingStorage[len(cloudStorageReport.CloudRecordingStorage)-1]
 
-			// remove " GB" suffix from FreeUsage, PlanUsage and Usage fields to convert them to float
-			freeUsage, _ := strconv.ParseFloat(strings.TrimSuffix(cloud.FreeUsage, " GB"), 64)
-			planUsage, _ := strconv.ParseFloat(strings.TrimSuffix(cloud.PlanUsage, " GB"), 64)
-			usage, _ := strconv.ParseFloat(strings.TrimSuffix(cloud.Usage, " GB"), 64)
 			// calculate usage percent
-			cloud.UsagePercent = int((usage / (freeUsage + planUsage)) * 100)
+			if cloud.FreeUsage+cloud.PlanUsage == 0 {
+				cloud.UsagePercent = 0
+			} else {
+				cloud.UsagePercent = int((float64(cloud.Usage) / float64(cloud.FreeUsage+cloud.PlanUsage)) * 100)
+			}
 
 			resp["cloud"] = cloud
 		}
@@ -195,7 +196,7 @@ func (s *Server) statusHandler(ctx context.Context) func(rw http.ResponseWriter,
 			return
 		}
 
-		resp["storage"] = map[string]interface{}{
+		resp["storage"] = map[string]any{
 			"total":         model.FileSize(diskStorageReport.Total),
 			"free":          model.FileSize(diskStorageReport.Free),
 			"used":          model.FileSize(diskStorageReport.Used),
@@ -238,7 +239,7 @@ func (s *Server) listMeetings(ctx context.Context) func(rw http.ResponseWriter, 
 			// log.Printf("[DEBUG] salted uuid: %s, accessKey: %s", s, m[i].AccessKey)
 		}
 
-		resp := map[string]interface{}{
+		resp := map[string]any{
 			"data": m,
 		}
 		json.NewEncoder(rw).Encode(resp)
@@ -296,7 +297,7 @@ func (s *Server) watchMeetingHandler(ctx context.Context) func(rw http.ResponseW
 
 		log.Printf("[INFO] /watchMeeting granted")
 
-		resp := map[string]interface{}{
+		resp := map[string]any{
 			"meeting": meeting,
 			"records": records,
 		}
@@ -370,7 +371,7 @@ func (s *Server) meetingsLoadedHandler(ctx context.Context) func(rw http.Respons
 		}
 
 		log.Printf("[DEBUG] Checking if uuids loaded: \r\n %+v", uuids.Meetings)
-		resp := map[string]interface{}{}
+		resp := map[string]any{}
 		for _, uuid := range uuids.Meetings {
 			recs, err := s.store.GetRecords(ctx, uuid)
 			if err != nil {
@@ -416,7 +417,7 @@ func (s *Server) meetingsLoadedHandler(ctx context.Context) func(rw http.Respons
 func (s *Server) checkConsistencyHandler(ctx context.Context) func(rw http.ResponseWriter, r *http.Request) {
 	return func(rw http.ResponseWriter, r *http.Request) {
 		checked, err := s.repo.CheckConsistency(ctx)
-		response := map[string]interface{}{"checked": checked, "error": err}
+		response := map[string]any{"checked": checked, "error": err}
 		rw.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(rw).Encode(response)
 	}

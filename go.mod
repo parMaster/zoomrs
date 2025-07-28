@@ -1,6 +1,8 @@
 module github.com/parMaster/zoomrs
 
-go 1.21
+go 1.23
+
+toolchain go1.24.3
 
 require (
 	github.com/cavaliergopher/grab/v3 v3.0.1
@@ -13,8 +15,8 @@ require (
 	github.com/mattn/go-sqlite3 v1.14.17
 	github.com/parMaster/mcache v0.0.0-20230804152454-034f528ba385
 	github.com/rivo/tview v0.0.0-20230814110005-ccc2c8119703
-	github.com/shirou/gopsutil/v3 v3.23.7
-	github.com/stretchr/testify v1.8.4
+	github.com/shirou/gopsutil/v4 v4.25.6
+	github.com/stretchr/testify v1.10.0
 	golang.org/x/oauth2 v0.11.0
 	gopkg.in/yaml.v3 v3.0.1
 )
@@ -25,6 +27,7 @@ require (
 	github.com/aymerick/douceur v0.2.0 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/dghubble/oauth1 v0.7.2 // indirect
+	github.com/ebitengine/purego v0.8.4 // indirect
 	github.com/gdamore/encoding v1.0.0 // indirect
 	github.com/go-oauth2/oauth2/v4 v4.5.2 // indirect
 	github.com/go-ole/go-ole v1.3.0 // indirect
@@ -52,14 +55,14 @@ require (
 	github.com/xdg-go/scram v1.1.2 // indirect
 	github.com/xdg-go/stringprep v1.0.4 // indirect
 	github.com/youmark/pkcs8 v0.0.0-20201027041543-1326539a0a0a // indirect
-	github.com/yusufpapurcu/wmi v1.2.3 // indirect
+	github.com/yusufpapurcu/wmi v1.2.4 // indirect
 	go.etcd.io/bbolt v1.3.7 // indirect
 	go.mongodb.org/mongo-driver v1.12.1 // indirect
 	golang.org/x/crypto v0.21.0 // indirect
 	golang.org/x/image v0.18.0 // indirect
 	golang.org/x/net v0.23.0 // indirect
 	golang.org/x/sync v0.7.0 // indirect
-	golang.org/x/sys v0.18.0 // indirect
+	golang.org/x/sys v0.28.0 // indirect
 	golang.org/x/term v0.18.0 // indirect
 	golang.org/x/text v0.16.0 // indirect
 	google.golang.org/appengine v1.6.7 // indirect

@@ -1,7 +1,10 @@
 package model
 
 import (
+	"encoding/json"
 	"fmt"
+	"strconv"
+	"strings"
 	"time"
 )
 
@@ -84,11 +87,11 @@ type CloudRecordingReport struct {
 
 // CloudRecordingStorage describes the cloud recording storage
 type CloudRecordingStorage struct {
-	Date         string `json:"date"`
-	FreeUsage    string `json:"free_usage"`              // ex: "free_usage":"495 GB"
-	PlanUsage    string `json:"plan_usage"`              // ex: "plan_usage":"0"
-	Usage        string `json:"usage"`                   // ex: "usage":"94.72 GB"
-	UsagePercent int    `json:"usage_percent,omitempty"` // ex: "usage_rate":"19"
+	Date         string   `json:"date"`
+	FreeUsage    FileSize `json:"free_usage"`              // ex: "free_usage":"1.2 TB"
+	PlanUsage    FileSize `json:"plan_usage"`              // ex: "plan_usage":"0"
+	Usage        FileSize `json:"usage"`                   // ex: "usage":"94.72 GB"
+	UsagePercent int      `json:"usage_percent,omitempty"` // ex: "usage_rate":"19"
 }
 
 // FileSize describes the file size
@@ -110,6 +113,55 @@ func (f FileSize) String() string {
 		float64(f)/float64(div), "kMGTPE"[exp])
 }
 
+// MarshalJSON implements the json.Marshaler interface for FileSize
 func (f FileSize) MarshalJSON() ([]byte, error) {
-	return []byte(fmt.Sprintf(`"%s"`, f.String())), nil
+	return fmt.Appendf(nil, `"%s"`, f.String()), nil
+}
+
+// UnmarshalJSON implements the json.Unmarshaler interface for FileSize
+func (f *FileSize) UnmarshalJSON(data []byte) error {
+	var usage string
+	if err := json.Unmarshal(data, &usage); err != nil {
+		return err
+	}
+
+	bytes, err := parseUsageToBytes(usage)
+	if err != nil {
+		return err
+	}
+
+	*f = FileSize(bytes)
+	return nil
+}
+
+func parseUsageToBytes(usage string) (int64, error) {
+	parts := strings.Fields(usage)
+	if len(parts) < 1 {
+		return 0, fmt.Errorf("invalid format: %s", usage)
+	}
+
+	value, err := strconv.ParseFloat(parts[0], 64)
+	if err != nil {
+		return 0, err
+	}
+
+	if len(parts) < 2 {
+		return int64(value), nil
+	}
+
+	unit := strings.ToUpper(parts[1])
+	switch unit {
+	case "B", "BYTES":
+		return int64(value), nil
+	case "KB":
+		return int64(value * 1024), nil
+	case "MB":
+		return int64(value * 1024 * 1024), nil
+	case "GB":
+		return int64(value * 1024 * 1024 * 1024), nil
+	case "TB":
+		return int64(value * 1024 * 1024 * 1024 * 1024), nil
+	default:
+		return 0, fmt.Errorf("unknown unit: %s", unit)
+	}
 }

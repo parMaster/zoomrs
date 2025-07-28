@@ -13,7 +13,7 @@ import (
 	"time"
 
 	"github.com/cavaliergopher/grab/v3"
-	"github.com/shirou/gopsutil/v3/disk"
+	"github.com/shirou/gopsutil/v4/disk"
 
 	"github.com/parMaster/zoomrs/client"
 	"github.com/parMaster/zoomrs/config"
@@ -412,7 +412,7 @@ func (r *Repository) CleanupJob(ctx context.Context, daysAgo int) {
 // to ask if the list of meetings (uuids) recordings are downloaded
 func (r *Repository) requestMeetingsLoaded(meetings []string) (loaded bool, err error) {
 
-	if r.cfg.Commander.Instances == nil || len(r.cfg.Commander.Instances) == 0 {
+	if len(r.cfg.Commander.Instances) == 0 {
 		return false, fmt.Errorf("no instances configured")
 	}
 
