@@ -24,6 +24,7 @@ func Test_CloudUsage(t *testing.T) {
 	require.Equal(t, "2023-10-01", cloud.Date)
 	assert.Equal(t, FileSize(1319413953331), cloud.FreeUsage) // 1.2 TB in bytes
 	assert.Equal(t, FileSize(0), cloud.PlanUsage)             // 0 in bytes
+	assert.Equal(t, "0 B", cloud.PlanUsage.String())          // 0 in bytes
 	assert.Equal(t, FileSize(101704825569), cloud.Usage)      // 94.72 GB in bytes
 
 	// calculate usage percent

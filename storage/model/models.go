@@ -102,7 +102,7 @@ type FileSize int64
 func (f FileSize) String() string {
 	const unit = 1024
 	if f < unit {
-		return fmt.Sprintf("%dB", f)
+		return fmt.Sprintf("%d B", f)
 	}
 	div, exp := int64(unit), 0
 	for n := f / unit; n >= unit; n /= unit {
