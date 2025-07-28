@@ -1,5 +1,7 @@
 package client
 
+// integration tests for the Zoom client, which require Zoom credentials
+
 import (
 	"context"
 	"encoding/json"
@@ -12,6 +14,7 @@ import (
 	"github.com/parMaster/zoomrs/storage/model"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // Complete integration test. Requires Zoom credentials.
@@ -92,8 +95,8 @@ func Test_ZoomGetTokenRaceTest(t *testing.T) {
 	c := NewZoomClient(cfg.Client)
 	assert.NotNil(t, c)
 
-	// Get token race condition
-	for i := 0; i < 10; i++ {
+	// get token race condition
+	for range 10 {
 		go func() {
 			token, err := c.GetToken()
 			assert.NoError(t, err)
@@ -105,7 +108,7 @@ func Test_ZoomGetTokenRaceTest(t *testing.T) {
 	assert.NoError(t, err)
 	assert.NotNil(t, token)
 
-	// Get token error condition
+	// get token error condition
 	cfg.Client.Secret = "error"
 	c1 := NewZoomClient(cfg.Client)
 	assert.NotNil(t, c1)
@@ -136,7 +139,7 @@ func Test_CloudStorageReport(t *testing.T) {
 	err = c.Authorize()
 	assert.NoError(t, err)
 
-	// Get cloud storage
+	// get cloud storage
 	// from 14 days ago to yesterday
 	from := time.Now().AddDate(0, 0, -14).Format("2006-01-02")
 	to := time.Now().Format("2006-01-02")
@@ -145,7 +148,11 @@ func Test_CloudStorageReport(t *testing.T) {
 	assert.NoError(t, err)
 	assert.NotNil(t, storageReport)
 
-	// Print storage report
+	require.NotEmpty(t, storageReport)
+	require.NotEmpty(t, storageReport.CloudRecordingStorage)
+	assert.Len(t, storageReport.CloudRecordingStorage, 14)
+
+	// print storage report
 	s, _ := json.MarshalIndent(storageReport, "", "\t")
-	log.Printf("[DEBUG] Storage report: %+v", s)
+	log.Printf("[DEBUG] Storage report: %+v", string(s))
 }
