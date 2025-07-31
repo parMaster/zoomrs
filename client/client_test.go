@@ -51,12 +51,12 @@ func Test_ZoomClient(t *testing.T) {
 	assert.Equal(t, len(meetings), len(meetingsInterval))
 
 	// DeleteRecordingsOverCapacity test
-	storageCapacity := model.FileSize(500 * 1024 * 1024 * 1024) // 500GB
+	storageCapacity := model.FileSize(1000 * 1024 * 1024 * 1024) // 1 TB
 	deleted, err := c.DeleteRecordingsOverCapacity(context.Background(), storageCapacity)
 	assert.NoError(t, err)
 	assert.NotNil(t, deleted)
 
-	// Get cloud storage
+	// GetCloudStorageReport
 	// from the day before yesterday to yesterday
 	from := time.Now().AddDate(0, 0, -2).Format("2006-01-02")
 	to := time.Now().Format("2006-01-02")
@@ -66,7 +66,7 @@ func Test_ZoomClient(t *testing.T) {
 	assert.NotNil(t, storageReport)
 	log.Printf("[DEBUG] Storage report: %+v", storageReport)
 
-	// Get token error condition
+	// GetToken error condition
 	cfg.Client.Secret = "error"
 	c = NewZoomClient(cfg.Client)
 	assert.NotNil(t, c)

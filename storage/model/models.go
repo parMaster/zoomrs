@@ -118,23 +118,30 @@ func (f FileSize) MarshalJSON() ([]byte, error) {
 	return fmt.Appendf(nil, `"%s"`, f.String()), nil
 }
 
-// UnmarshalJSON implements the json.Unmarshaler interface for FileSize
+// UnmarshalJSON implements the json.Unmarshaler interface for FileSize.
+// It can parse either number (nn) or string (nn KB, nn MB).
 func (f *FileSize) UnmarshalJSON(data []byte) error {
-	var usage string
-	if err := json.Unmarshal(data, &usage); err != nil {
-		return err
+	var sizeNum uint64
+	if err := json.Unmarshal(data, &sizeNum); err == nil {
+		*f = FileSize(sizeNum)
+		return nil
 	}
 
-	bytes, err := parseUsageToBytes(usage)
+	var sizeStr string
+	if err := json.Unmarshal(data, &sizeStr); err != nil {
+		return fmt.Errorf("cannot unmarshal FileSize value(%s) to neither string nor uint64: %w", data, err)
+	}
+
+	size, err := parseSizeStrToBytes(sizeStr)
 	if err != nil {
 		return err
 	}
 
-	*f = FileSize(bytes)
+	*f = FileSize(size)
 	return nil
 }
 
-func parseUsageToBytes(usage string) (int64, error) {
+func parseSizeStrToBytes(usage string) (int64, error) {
 	parts := strings.Fields(usage)
 	if len(parts) < 1 {
 		return 0, fmt.Errorf("invalid format: %s", usage)
@@ -142,7 +149,7 @@ func parseUsageToBytes(usage string) (int64, error) {
 
 	value, err := strconv.ParseFloat(parts[0], 64)
 	if err != nil {
-		return 0, err
+		return 0, fmt.Errorf("cannot parse float value: %f, %w", value, err)
 	}
 
 	if len(parts) < 2 {

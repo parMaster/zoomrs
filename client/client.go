@@ -157,7 +157,7 @@ func (z *ZoomClient) GetIntervalMeetings(ctx context.Context, from, to time.Time
 		recordings := &model.Recordings{}
 
 		if err := json.NewDecoder(resp.Body).Decode(recordings); err != nil {
-			return nil, err
+			return nil, fmt.Errorf("failed to unmarshal recordings: %w", err)
 		}
 
 		meetings = append(meetings, recordings.Meetings...)
@@ -211,7 +211,7 @@ func (z *ZoomClient) GetAllMeetingsWithRetry(ctx context.Context) ([]model.Meeti
 	var meetings []model.Meeting
 	var err error
 
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		meetings, err = z.GetAllMeetings(ctx)
 		if err != nil {
 			delay := 30 * time.Duration(i) * time.Second
