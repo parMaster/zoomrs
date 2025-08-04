@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"log"
+	"os"
 	"time"
 
 	"github.com/gdamore/tcell/v2"
@@ -16,15 +17,14 @@ func (s *Commander) ShowUI() {
 	table.SetBorders(true)
 
 	var meetings []model.Meeting
-	from := time.Now().AddDate(0, 0, -1*7)
-	to := time.Now().AddDate(0, 0, 0)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	m, err := s.client.GetIntervalMeetings(ctx, from, to)
+	m, err := s.client.GetAllMeetings(ctx)
 	if err != nil {
 		log.Printf("[ERROR] GetIntervalMeetings: %e", err)
+		os.Exit(1)
 	}
 	meetings = append(meetings, m...)
 

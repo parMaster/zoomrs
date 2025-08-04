@@ -5,6 +5,7 @@ package client
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log"
 	"os"
 	"testing"
@@ -155,4 +156,45 @@ func Test_CloudStorageReport(t *testing.T) {
 	// print storage report
 	s, _ := json.MarshalIndent(storageReport, "", "\t")
 	log.Printf("[DEBUG] Storage report: %+v", string(s))
+}
+
+// Tests GetCloudStorageReport, shows the result in verbose mode
+func Test_GetAllMeetings(t *testing.T) {
+	cfgPath := "../config/config_cli.yml"
+
+	if _, err := os.Stat(cfgPath); os.IsNotExist(err) {
+		t.Skip("Config file does not exist: " + cfgPath)
+	}
+
+	cfg, err := config.NewConfig(cfgPath)
+	require.NoError(t, err)
+
+	if cfg.Client.Id == "secret" || cfg.Client.Secret == "secret" {
+		t.Skip("Zoom credentials are not configured")
+	}
+
+	c := NewZoomClient(cfg.Client)
+	assert.NotNil(t, c)
+
+	err = c.Authorize()
+	assert.NoError(t, err)
+
+	ctx := context.Background()
+	meetings, err := c.GetAllMeetings(ctx)
+	require.NoError(t, err)
+	assert.NotNil(t, meetings)
+
+	var total model.FileSize
+
+	for _, m := range meetings {
+		fmt.Println("-----")
+		fmt.Println(m.StartTime)
+		for _, r := range m.Records {
+			fmt.Println(r.FileSize)
+			total += r.FileSize
+		}
+	}
+
+	fmt.Println("-----TOTAL ---")
+	fmt.Println(total)
 }
