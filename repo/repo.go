@@ -513,7 +513,7 @@ func (r *Repository) freeUpSpace(ctx context.Context) (deleted int, result error
 			return deleted, fmt.Errorf("failed to get disk usage: %w", err)
 		}
 		if usage.Free > uint64(r.cfg.Storage.KeepFreeSpace) {
-			log.Printf("[INFO] Free space is %d (%d bytes), deleted %d records", model.FileSize(usage.Free), usage.Free, deleted)
+			log.Printf("[INFO] Free space is %s (%d bytes), deleted %d records", model.FileSize(usage.Free), usage.Free, deleted)
 			break
 		}
 

@@ -25,7 +25,7 @@ func Test_CloudUsage(t *testing.T) {
 	assert.Equal(t, FileSize(1319413953331), cloud.FreeUsage) // 1.2 TB in bytes
 	assert.Equal(t, FileSize(0), cloud.PlanUsage)             // 0 in bytes
 	assert.Equal(t, "0 B", cloud.PlanUsage.String())          // 0 in bytes
-	assert.Equal(t, FileSize(101704825569), cloud.Usage)      // 94.72 GB in bytes
+	assert.Equal(t, FileSize(101704825569), cloud.Usage)      // 94.7 GB in bytes
 
 	// calculate usage percent
 	if cloud.FreeUsage+cloud.PlanUsage == 0 {
@@ -35,4 +35,8 @@ func Test_CloudUsage(t *testing.T) {
 	}
 
 	assert.Equal(t, 7, cloud.UsagePercent) // 94.72 GB is 7% of 1.2 TB
+
+	// is FileSize Stringer interface implemented
+	assert.Equal(t, "1.2 TB", FileSize(1319413953331).String())
+	assert.Equal(t, "94.7 GB", FileSize(101704825569).String())
 }
