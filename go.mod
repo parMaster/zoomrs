@@ -14,10 +14,10 @@ require (
 	github.com/golang-jwt/jwt v3.2.2+incompatible
 	github.com/jessevdk/go-flags v1.5.0
 	github.com/mattn/go-sqlite3 v1.14.17
-	github.com/parMaster/mcache v0.0.0-20230804152454-034f528ba385
+	github.com/parMaster/mcache/v2 v2.0.0
 	github.com/rivo/tview v0.0.0-20230814110005-ccc2c8119703
 	github.com/shirou/gopsutil/v4 v4.25.6
-	github.com/stretchr/testify v1.10.0
+	github.com/stretchr/testify v1.11.1
 	golang.org/x/oauth2 v0.11.0
 	gopkg.in/yaml.v3 v3.0.1
 )

@@ -11,7 +11,7 @@ import (
 
 	"github.com/go-pkgz/auth/token"
 	"github.com/golang-jwt/jwt"
-	"github.com/parMaster/mcache"
+	"github.com/parMaster/mcache/v2"
 	"github.com/parMaster/zoomrs/client"
 	"github.com/parMaster/zoomrs/config"
 	"github.com/parMaster/zoomrs/repo"
@@ -103,7 +103,7 @@ func newTestServer(t *testing.T) (*Server, context.Context) {
 		store:       store,
 		authService: authService,
 		repo:        repo.NewRepository(store, zoomClient, cfg),
-		cache:       mcache.NewCache(),
+		cache:       mcache.NewCache[any](),
 	}
 	return srv, ctx
 }

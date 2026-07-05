@@ -19,7 +19,7 @@ import (
 	"github.com/parMaster/zoomrs/storage/sqlite"
 	"github.com/parMaster/zoomrs/webauth"
 
-	"github.com/parMaster/mcache"
+	"github.com/parMaster/mcache/v2"
 
 	"github.com/go-pkgz/auth"
 	"github.com/go-pkgz/lgr"
@@ -32,7 +32,7 @@ type Server struct {
 	store       storage.Storer
 	authService *auth.Service
 	repo        *repo.Repository
-	cache       mcache.Cacher
+	cache       mcache.Cacher[any]
 }
 
 func NewServer(conf *config.Parameters) *Server {
@@ -41,7 +41,7 @@ func NewServer(conf *config.Parameters) *Server {
 	if err != nil {
 		log.Fatalf("[ERROR] failed to init auth service: %e", err)
 	}
-	cache := mcache.NewCache()
+	cache := mcache.NewCache[any]()
 
 	return &Server{cfg: conf, client: client, authService: authService, cache: cache}
 }

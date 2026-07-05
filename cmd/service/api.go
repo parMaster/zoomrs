@@ -147,8 +147,8 @@ func (s *Server) statusHandler(ctx context.Context) func(rw http.ResponseWriter,
 				return
 			}
 			lastDownloadedMeeting = meetingsLoaded[0]
-			if err := s.cache.Set("lastDownloadedMeeting", lastDownloadedMeeting, 10*60); err != nil {
-				log.Printf("[ERROR] failed to cache lastDownloadedMeeting, %v", err)
+			if !s.cache.Set("lastDownloadedMeeting", lastDownloadedMeeting, 10*time.Minute) {
+				log.Printf("[ERROR] failed to cache lastDownloadedMeeting")
 			}
 		} else {
 			log.Printf("[DEBUG] hit")
@@ -167,8 +167,8 @@ func (s *Server) statusHandler(ctx context.Context) func(rw http.ResponseWriter,
 				rw.WriteHeader(http.StatusInternalServerError)
 				return
 			}
-			if err := s.cache.Set("cloudStorageReport", cloudStorageReport, 60*60); err != nil {
-				log.Printf("[ERROR] failed to cache cloudStorageReport, %v", err)
+			if !s.cache.Set("cloudStorageReport", cloudStorageReport, time.Hour) {
+				log.Printf("[ERROR] failed to cache cloudStorageReport")
 			}
 		} else {
 			log.Printf("[DEBUG] hit")
