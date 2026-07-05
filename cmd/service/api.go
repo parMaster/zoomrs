@@ -12,9 +12,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/go-chi/chi/v5"
 	"github.com/go-pkgz/auth/token"
 	"github.com/go-pkgz/rest"
+	"github.com/go-pkgz/routegroup"
 	"github.com/parMaster/zoomrs/storage"
 	"github.com/parMaster/zoomrs/storage/model"
 	"github.com/parMaster/zoomrs/web"
@@ -22,46 +22,44 @@ import (
 )
 
 func (s *Server) router(ctx context.Context) http.Handler {
-	router := chi.NewRouter()
+	mux := http.NewServeMux()
+	router := routegroup.New(mux)
 	router.Use(rest.Throttle(5))
 
 	// auth routes
 	authRoutes, avaRoutes := s.authService.Handlers()
-	router.Mount("/auth", authRoutes)
-	router.Mount("/avatar", avaRoutes)
+	router.Handle("/auth/", authRoutes)
+	router.Handle("/avatar/", avaRoutes)
 
 	// Private routes
 	m := s.authService.Middleware()
-	router.With(m.Auth).Get("/listMeetings", s.listMeetings(ctx))
+	router.With(m.Auth).HandleFunc("GET /listMeetings", s.listMeetings(ctx))
 
-	router.With(m.Trace).Get("/", s.indexPageHandler)
+	router.With(m.Auth).HandleFunc("GET /stats/{divider}", s.statsHandler(ctx))
+	router.With(m.Auth).HandleFunc("GET /stats/", s.statsHandler(ctx))
 
-	router.With(m.Auth).Route("/stats", func(r chi.Router) {
-		r.Get("/{divider}", s.statsHandler(ctx))
-		r.Get("/", s.statsHandler(ctx))
-	})
+	router.With(m.Auth).HandleFunc("POST /check", s.checkConsistencyHandler(ctx))
 
-	router.Post("/meetingsLoaded/{accessKey}", s.meetingsLoadedHandler(ctx))
-
-	router.With(m.Auth).Get("/check", s.checkConsistencyHandler(ctx))
+	router.HandleFunc("POST /meetingsLoaded/{accessKey}", s.meetingsLoadedHandler(ctx))
 
 	// Public routes
-	router.Get("/status", s.statusHandler(ctx))
+	router.With(m.Trace).HandleFunc("GET /", s.indexPageHandler)
 
-	router.Get("/watchMeeting/{accessKey}", s.watchMeetingHandler(ctx))
-	router.Get("/watch/{accessKey}", s.watchHandler)
+	router.HandleFunc("GET /status", s.statusHandler(ctx))
 
-	router.Get("/login", func(rw http.ResponseWriter, r *http.Request) {
+	router.HandleFunc("GET /watchMeeting/{accessKey}", s.watchMeetingHandler(ctx))
+	router.HandleFunc("GET /watch/{accessKey}", s.watchHandler)
+
+	router.HandleFunc("GET /login", func(rw http.ResponseWriter, r *http.Request) {
 		s.respondWithFile("web/auth.html", rw)
 	})
 
-	router.Get("/favicon.ico", func(rw http.ResponseWriter, r *http.Request) {
+	router.HandleFunc("GET /favicon.ico", func(rw http.ResponseWriter, r *http.Request) {
 		rw.Header().Set("Content-Type", "image/x-icon")
 		s.respondWithFile("web/favicon.ico", rw)
 	})
 
-	fs := http.FileServer(http.Dir(s.cfg.Storage.Repository))
-	router.Handle("/"+s.cfg.Storage.Repository+"/*", http.StripPrefix("/"+s.cfg.Storage.Repository, filesOnly(fs)))
+	router.With(filesOnly).HandleFiles(s.cfg.Storage.Repository, http.Dir(s.cfg.Storage.Repository))
 
 	return router
 }
@@ -81,7 +79,7 @@ func (s *Server) indexPageHandler(rw http.ResponseWriter, r *http.Request) {
 
 // watchHandler serves /watchHandler/{accessKey} path (web/watchHandler.html)
 func (s *Server) watchHandler(rw http.ResponseWriter, r *http.Request) {
-	accessKey := chi.URLParam(r, "accessKey")
+	accessKey := r.PathValue("accessKey")
 	if accessKey == "" {
 		rw.WriteHeader(http.StatusBadRequest)
 		return
@@ -249,7 +247,7 @@ func (s *Server) listMeetings(ctx context.Context) func(rw http.ResponseWriter, 
 func (s *Server) watchMeetingHandler(ctx context.Context) func(rw http.ResponseWriter, r *http.Request) {
 	return func(rw http.ResponseWriter, r *http.Request) {
 		// uuid is get parameter
-		accessKey := chi.URLParam(r, "accessKey")
+		accessKey := r.PathValue("accessKey")
 		uuid := r.URL.Query().Get("uuid")
 		log.Printf("[INFO] /watchMeeting/%s?uuid=%s (%s)", accessKey, uuid, r.Header.Get("X-Real-Ip"))
 
@@ -308,7 +306,7 @@ func (s *Server) watchMeetingHandler(ctx context.Context) func(rw http.ResponseW
 
 func (s *Server) statsHandler(ctx context.Context) func(rw http.ResponseWriter, r *http.Request) {
 	return func(rw http.ResponseWriter, r *http.Request) {
-		divider := strings.ToUpper(chi.URLParam(r, "divider"))
+		divider := strings.ToUpper(r.PathValue("divider"))
 		var d rune
 		if len(divider) > 0 {
 			d = []rune(divider)[0]
@@ -349,7 +347,7 @@ func filesOnly(next http.Handler) http.Handler {
 // response is result:ok or result:pending
 func (s *Server) meetingsLoadedHandler(ctx context.Context) func(rw http.ResponseWriter, r *http.Request) {
 	return func(rw http.ResponseWriter, r *http.Request) {
-		accessKey := chi.URLParam(r, "accessKey")
+		accessKey := r.PathValue("accessKey")
 		log.Printf("[INFO] /meetingsLoaded/%s (%s)", accessKey, r.Header.Get("X-Real-Ip"))
 		if accessKey == "" || accessKey != s.cfg.Server.AccessKeySalt {
 			rw.WriteHeader(http.StatusForbidden)

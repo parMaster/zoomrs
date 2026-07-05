@@ -7,10 +7,11 @@ toolchain go1.24.3
 require (
 	github.com/cavaliergopher/grab/v3 v3.0.1
 	github.com/gdamore/tcell/v2 v2.6.0
-	github.com/go-chi/chi/v5 v5.0.10
 	github.com/go-pkgz/auth v1.22.0
 	github.com/go-pkgz/lgr v0.11.0
 	github.com/go-pkgz/rest v1.17.0
+	github.com/go-pkgz/routegroup v1.5.3
+	github.com/golang-jwt/jwt v3.2.2+incompatible
 	github.com/jessevdk/go-flags v1.5.0
 	github.com/mattn/go-sqlite3 v1.14.17
 	github.com/parMaster/mcache v0.0.0-20230804152454-034f528ba385
@@ -32,7 +33,6 @@ require (
 	github.com/go-oauth2/oauth2/v4 v4.5.2 // indirect
 	github.com/go-ole/go-ole v1.3.0 // indirect
 	github.com/go-pkgz/repeater v1.1.3 // indirect
-	github.com/golang-jwt/jwt v3.2.2+incompatible // indirect
 	github.com/golang/protobuf v1.5.4 // indirect
 	github.com/golang/snappy v0.0.4 // indirect
 	github.com/gorilla/css v1.0.0 // indirect

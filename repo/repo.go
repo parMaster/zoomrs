@@ -355,7 +355,6 @@ func (r *Repository) CleanupJob(ctx context.Context, daysAgo int) {
 		}
 
 		loaded, err := r.requestMeetingsLoaded(uuids)
-
 		if err != nil {
 			log.Printf("[ERROR] meetingsLoaded returned error: %v", err)
 			select {

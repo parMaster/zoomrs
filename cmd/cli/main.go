@@ -112,11 +112,13 @@ func (s *Commander) Run(ctx context.Context, opts Options) error {
 			break
 		}
 
+		syncTimelimitCtx, cancel := context.WithTimeout(ctx, 12*time.Hour)
+		defer cancel()
 		var lastError error
 		for {
 			select {
-			case <-ctx.Done():
-				return fmt.Errorf("downloading terminated early: %w", ctx.Err())
+			case <-syncTimelimitCtx.Done():
+				return fmt.Errorf("downloading terminated early: %w", syncTimelimitCtx.Err())
 			default:
 			}
 			err = r.DownloadOnce(ctx)
@@ -132,8 +134,8 @@ func (s *Commander) Run(ctx context.Context, opts Options) error {
 				log.Printf("[ERROR] failed to download meetings, %v, retrying in 30 sec", err)
 				lastError = err
 				select {
-				case <-ctx.Done():
-					return fmt.Errorf("downloading terminated in the process: %w", ctx.Err())
+				case <-syncTimelimitCtx.Done():
+					return fmt.Errorf("downloading terminated in the process: %w", syncTimelimitCtx.Err())
 				case <-time.After(30 * time.Second):
 					continue
 				}
