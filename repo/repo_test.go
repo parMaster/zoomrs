@@ -101,11 +101,12 @@ func Test_FreeUpSpace(t *testing.T) {
 
 	time.Sleep(1 * time.Second)
 
-	// set KeepFreeSpace to total free space, after creating test files - 1 byte
+	// require noticeably less free space than is actually available, so unrelated disk
+	// activity from other tests/processes sharing this filesystem can't flip the comparison
 	usage, err := disk.Usage(cfg.Storage.Repository)
 	assert.NoError(t, err)
 	log.Println("Free space before test: ", usage.Free)
-	cfg.Storage.KeepFreeSpace = usage.Free - 1
+	cfg.Storage.KeepFreeSpace = usage.Free - 10*1024*1024 // -10MB
 
 	deleted, err := repo.freeUpSpace(ctx)
 	assert.NoError(t, err)
@@ -167,8 +168,11 @@ func Test_FreeUpSpace(t *testing.T) {
 	usage, err = disk.Usage(cfg.Storage.Repository)
 	assert.NoError(t, err)
 
-	// set KeepFreeSpace to total free space, before creating test files
-	cfg.Storage.KeepFreeSpace = usage.Free
+	// require far more free space than is actually available - real filesystems report free
+	// space in block-size increments (and background disk activity can shift it by a few KB
+	// between measurements), so deleting these 4-byte test files could never close a gap this
+	// large. That keeps the loop from stopping early and makes "deleted == len(testRecords)" deterministic.
+	cfg.Storage.KeepFreeSpace = usage.Free + 1<<30 // +1GB
 
 	log.Println("Free space before test: ", usage.Free)
 
