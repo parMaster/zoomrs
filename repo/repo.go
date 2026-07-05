@@ -260,7 +260,9 @@ func (r *Repository) DownloadRecord(ctx context.Context, record *model.Record) e
 	if err != nil {
 		return err
 	}
-	r.store.UpdateRecord(ctx, record.Id, model.StatusDownloading, "")
+	if err := r.store.UpdateRecord(ctx, record.Id, model.StatusDownloading, ""); err != nil {
+		log.Printf("[ERROR] failed to update record %s status to downloading, %v", record.Id, err)
+	}
 
 	path, _ := record.Paths(r.cfg.Storage.Repository)
 	if err = r.prepareDestination(path); err != nil {
@@ -274,24 +276,24 @@ func (r *Repository) DownloadRecord(ctx context.Context, record *model.Record) e
 	url := fmt.Sprintf("%s?access_token=%s", record.DownloadURL, token.AccessToken)
 	resp, err := grab.Get(path, url)
 	if err != nil {
-		r.store.UpdateRecord(ctx, record.Id, model.StatusFailed, "")
+		r.markDownloadFailed(ctx, record.Id)
 		return fmt.Errorf("failed to download %s, %v", url, err)
 	}
 
 	// check if the download was successful
 	if resp.HTTPResponse.StatusCode != 200 {
-		r.store.UpdateRecord(ctx, record.Id, model.StatusFailed, "")
+		r.markDownloadFailed(ctx, record.Id)
 		return fmt.Errorf("failed to download %s, status %d", url, resp.HTTPResponse.StatusCode)
 	}
 	// check if the file is not empty
 	if resp.Size() == 0 || resp.Size() != int64(record.FileSize) {
-		r.store.UpdateRecord(ctx, record.Id, model.StatusFailed, "")
+		r.markDownloadFailed(ctx, record.Id)
 		return fmt.Errorf("failed to download %s, size %d", url, resp.Size())
 	}
 
 	// check if resp.Filename extension matches record.FileExtension
 	if resp.Filename[len(resp.Filename)-len(record.FileExtension):] != strings.ToLower(record.FileExtension) {
-		r.store.UpdateRecord(ctx, record.Id, model.StatusFailed, "")
+		r.markDownloadFailed(ctx, record.Id)
 		return fmt.Errorf("failed to download %s, extension %s", url, resp.Filename[len(resp.Filename)-len(record.FileExtension):])
 	}
 
@@ -301,6 +303,14 @@ func (r *Repository) DownloadRecord(ctx context.Context, record *model.Record) e
 	}
 
 	return nil
+}
+
+// markDownloadFailed marks a record as failed; the caller already has a more specific
+// error to return, so this only logs if the status update itself fails.
+func (r *Repository) markDownloadFailed(ctx context.Context, recordId string) {
+	if err := r.store.UpdateRecord(ctx, recordId, model.StatusFailed, ""); err != nil {
+		log.Printf("[ERROR] failed to update record %s status to failed, %v", recordId, err)
+	}
 }
 
 // PrepareDestination creates directory for the downloaded file
@@ -430,7 +440,7 @@ func (r *Repository) requestMeetingsLoaded(meetings []string) (loaded bool, err 
 		if err != nil {
 			return false, fmt.Errorf("failed to post meetingsLoaded to %s, %v", instance, err)
 		}
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 		if resp.StatusCode != http.StatusOK {
 			return false, fmt.Errorf("failed to post meetingsLoaded to %s, status %d", instance, resp.StatusCode)
 		}
@@ -462,20 +472,20 @@ func (r *Repository) CheckConsistency(ctx context.Context) (checked int, result 
 		// check if file with path exists
 		if _, err := os.Stat(rec.FilePath); os.IsNotExist(err) {
 			log.Printf("File does not exist: %s", rec.FilePath)
-			errors.Join(result, fmt.Errorf("file does not exist: %s", rec.FilePath))
+			result = errors.Join(result, fmt.Errorf("file does not exist: %s", rec.FilePath))
 		}
 		// check if file is not empty
 		if info, err := os.Stat(rec.FilePath); err == nil {
 			if info.Size() == 0 {
 				log.Printf("File is empty: %s", rec.FilePath)
-				errors.Join(result, fmt.Errorf("file is empty: %s", rec.FilePath))
+				result = errors.Join(result, fmt.Errorf("file is empty: %s", rec.FilePath))
 			}
 		}
 		// check if file size matches record.FileSize
 		if info, err := os.Stat(rec.FilePath); err == nil {
 			if info.Size() != int64(rec.FileSize) {
 				log.Printf("File size does not match: %s", rec.FilePath)
-				errors.Join(result, fmt.Errorf("file size does not match: %s", rec.FilePath))
+				result = errors.Join(result, fmt.Errorf("file size does not match: %s", rec.FilePath))
 			}
 		}
 		checked++
@@ -523,11 +533,13 @@ func (r *Repository) freeUpSpace(ctx context.Context) (deleted int, result error
 		}
 		if err := os.RemoveAll(recFolder); err != nil {
 			log.Printf("[DEBUG] Failed to delete %s, %v", recFolder, err)
-			errors.Join(result, fmt.Errorf("failed to delete %s, %v; ", recFolder, err))
+			result = errors.Join(result, fmt.Errorf("failed to delete %s, %v; ", recFolder, err))
 		} else {
 			deleted++
 			log.Printf("[DEBUG] Deleted %s", recFolder)
-			r.store.UpdateRecord(ctx, rec.Id, model.StatusDeleted, "")
+			if err := r.store.UpdateRecord(ctx, rec.Id, model.StatusDeleted, ""); err != nil {
+				log.Printf("[ERROR] failed to update record %s status to deleted, %v", rec.Id, err)
+			}
 		}
 
 		// if dateFolder is empty, delete it

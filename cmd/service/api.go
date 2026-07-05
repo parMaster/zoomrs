@@ -51,12 +51,12 @@ func (s *Server) router(ctx context.Context) http.Handler {
 	router.HandleFunc("GET /watch/{accessKey}", s.watchHandler)
 
 	router.HandleFunc("GET /login", func(rw http.ResponseWriter, r *http.Request) {
-		s.respondWithFile("web/auth.html", rw)
+		_ = s.respondWithFile("web/auth.html", rw)
 	})
 
 	router.HandleFunc("GET /favicon.ico", func(rw http.ResponseWriter, r *http.Request) {
 		rw.Header().Set("Content-Type", "image/x-icon")
-		s.respondWithFile("web/favicon.ico", rw)
+		_ = s.respondWithFile("web/favicon.ico", rw)
 	})
 
 	router.With(filesOnly).HandleFiles(s.cfg.Storage.Repository, http.Dir(s.cfg.Storage.Repository))
@@ -74,7 +74,7 @@ func (s *Server) indexPageHandler(rw http.ResponseWriter, r *http.Request) {
 		http.Redirect(rw, r, "/login", http.StatusFound)
 		return
 	}
-	s.respondWithFile("web/index.html", rw)
+	_ = s.respondWithFile("web/index.html", rw)
 }
 
 // watchHandler serves /watchHandler/{accessKey} path (web/watchHandler.html)
@@ -84,7 +84,7 @@ func (s *Server) watchHandler(rw http.ResponseWriter, r *http.Request) {
 		rw.WriteHeader(http.StatusBadRequest)
 		return
 	}
-	s.respondWithFile("web/watch.html", rw)
+	_ = s.respondWithFile("web/watch.html", rw)
 }
 
 func (s *Server) respondWithFile(file string, rw http.ResponseWriter) error {
@@ -101,7 +101,10 @@ func (s *Server) respondWithFile(file string, rw http.ResponseWriter) error {
 		rw.WriteHeader(http.StatusInternalServerError)
 		return err
 	}
-	rw.Write(html)
+	if _, err := rw.Write(html); err != nil {
+		log.Printf("[ERROR] failed to write response for %s, %v", file, err)
+		return err
+	}
 	return nil
 }
 
@@ -144,7 +147,9 @@ func (s *Server) statusHandler(ctx context.Context) func(rw http.ResponseWriter,
 				return
 			}
 			lastDownloadedMeeting = meetingsLoaded[0]
-			s.cache.Set("lastDownloadedMeeting", lastDownloadedMeeting, 10*60)
+			if err := s.cache.Set("lastDownloadedMeeting", lastDownloadedMeeting, 10*60); err != nil {
+				log.Printf("[ERROR] failed to cache lastDownloadedMeeting, %v", err)
+			}
 		} else {
 			log.Printf("[DEBUG] hit")
 			lastDownloadedMeeting = cachedLast.(model.Meeting)
@@ -162,7 +167,9 @@ func (s *Server) statusHandler(ctx context.Context) func(rw http.ResponseWriter,
 				rw.WriteHeader(http.StatusInternalServerError)
 				return
 			}
-			s.cache.Set("cloudStorageReport", cloudStorageReport, 60*60)
+			if err := s.cache.Set("cloudStorageReport", cloudStorageReport, 60*60); err != nil {
+				log.Printf("[ERROR] failed to cache cloudStorageReport, %v", err)
+			}
 		} else {
 			log.Printf("[DEBUG] hit")
 			cloudStorageReport = cachedCloud.(*model.CloudRecordingReport)
@@ -204,7 +211,9 @@ func (s *Server) statusHandler(ctx context.Context) func(rw http.ResponseWriter,
 		rw.Header().Set("Content-Type", "application/json")
 		enc := json.NewEncoder(rw)
 		enc.SetIndent("", "    ")
-		enc.Encode(resp)
+		if err := enc.Encode(resp); err != nil {
+			log.Printf("[ERROR] failed to encode response, %v", err)
+		}
 	}
 }
 
@@ -232,7 +241,7 @@ func (s *Server) listMeetings(ctx context.Context) func(rw http.ResponseWriter, 
 
 			s := fmt.Sprintf("%s%s", m[i].UUID, s.cfg.Server.AccessKeySalt)
 			h := md5.New()
-			io.WriteString(h, s)
+			_, _ = io.WriteString(h, s) // hash.Hash.Write never returns an error
 			m[i].AccessKey = fmt.Sprintf("%x", h.Sum(nil))
 			// log.Printf("[DEBUG] salted uuid: %s, accessKey: %s", s, m[i].AccessKey)
 		}
@@ -240,7 +249,9 @@ func (s *Server) listMeetings(ctx context.Context) func(rw http.ResponseWriter, 
 		resp := map[string]any{
 			"data": m,
 		}
-		json.NewEncoder(rw).Encode(resp)
+		if err := json.NewEncoder(rw).Encode(resp); err != nil {
+			log.Printf("[ERROR] failed to encode response, %v", err)
+		}
 	}
 }
 
@@ -260,7 +271,7 @@ func (s *Server) watchMeetingHandler(ctx context.Context) func(rw http.ResponseW
 		h := md5.New()
 		saltedUUID := uuid + s.cfg.Server.AccessKeySalt
 		log.Printf("[DEBUG] salted uuid: %s", saltedUUID)
-		io.WriteString(h, saltedUUID)
+		_, _ = io.WriteString(h, saltedUUID) // hash.Hash.Write never returns an error
 		key := fmt.Sprintf("%x", h.Sum(nil))
 		log.Printf("[DEBUG] accessKey: %s, key: %s", accessKey, key)
 		if accessKey != key {
@@ -300,7 +311,9 @@ func (s *Server) watchMeetingHandler(ctx context.Context) func(rw http.ResponseW
 			"records": records,
 		}
 		rw.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(rw).Encode(resp)
+		if err := json.NewEncoder(rw).Encode(resp); err != nil {
+			log.Printf("[ERROR] failed to encode response, %v", err)
+		}
 	}
 }
 
@@ -326,7 +339,9 @@ func (s *Server) statsHandler(ctx context.Context) func(rw http.ResponseWriter, 
 		rw.Header().Set("Content-Type", "application/json")
 		enc := json.NewEncoder(rw)
 		enc.SetIndent("", "    ")
-		enc.Encode(stats)
+		if err := enc.Encode(stats); err != nil {
+			log.Printf("[ERROR] failed to encode response, %v", err)
+		}
 	}
 }
 
@@ -370,6 +385,11 @@ func (s *Server) meetingsLoadedHandler(ctx context.Context) func(rw http.Respons
 
 		log.Printf("[DEBUG] Checking if uuids loaded: \r\n %+v", uuids.Meetings)
 		resp := map[string]any{}
+		writeResp := func() {
+			if err := json.NewEncoder(rw).Encode(resp); err != nil {
+				log.Printf("[ERROR] failed to encode response, %v", err)
+			}
+		}
 		for _, uuid := range uuids.Meetings {
 			recs, err := s.store.GetRecords(ctx, uuid)
 			if err != nil {
@@ -380,7 +400,7 @@ func (s *Server) meetingsLoadedHandler(ctx context.Context) func(rw http.Respons
 			if len(recs) == 0 {
 				resp["result"] = "pending"
 				log.Printf("[DEBUG] Pending caused by no records for uuid: %s", uuid)
-				json.NewEncoder(rw).Encode(resp)
+				writeResp()
 				return
 			}
 
@@ -390,7 +410,7 @@ func (s *Server) meetingsLoadedHandler(ctx context.Context) func(rw http.Respons
 				if rec.Status != model.StatusDownloaded {
 					resp["result"] = "pending"
 					log.Printf("[DEBUG] Pending caused by status %s - %s", rec.Id, rec.Status)
-					json.NewEncoder(rw).Encode(resp)
+					writeResp()
 					return
 				}
 
@@ -398,7 +418,7 @@ func (s *Server) meetingsLoadedHandler(ctx context.Context) func(rw http.Respons
 					if info.Size() != int64(rec.FileSize) {
 						resp["result"] = "pending"
 						log.Printf("[DEBUG] Pending caused by filesize %s - %d", rec.Id, rec.FileSize)
-						json.NewEncoder(rw).Encode(resp)
+						writeResp()
 						return
 					}
 				}
@@ -407,7 +427,7 @@ func (s *Server) meetingsLoadedHandler(ctx context.Context) func(rw http.Respons
 
 		log.Printf("[DEBUG] All records are downloaded, returning ok")
 		resp["result"] = "ok"
-		json.NewEncoder(rw).Encode(resp)
+		writeResp()
 	}
 }
 
@@ -417,6 +437,8 @@ func (s *Server) checkConsistencyHandler(ctx context.Context) func(rw http.Respo
 		checked, err := s.repo.CheckConsistency(ctx)
 		response := map[string]any{"checked": checked, "error": err}
 		rw.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(rw).Encode(response)
+		if err := json.NewEncoder(rw).Encode(response); err != nil {
+			log.Printf("[ERROR] failed to encode response, %v", err)
+		}
 	}
 }

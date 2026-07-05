@@ -30,7 +30,9 @@ func NewStorage(ctx context.Context, path string) (*SQLiteStorage, error) {
 
 	go func() {
 		<-ctx.Done()
-		sqliteDatabase.Close()
+		if err := sqliteDatabase.Close(); err != nil {
+			log.Printf("[ERROR] failed to close database: %v", err)
+		}
 	}()
 
 	q := `CREATE TABLE IF NOT EXISTS meetings (

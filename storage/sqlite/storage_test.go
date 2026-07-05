@@ -27,7 +27,7 @@ func Test_SqliteStorage(t *testing.T) {
 	if err != nil {
 		log.Printf("[ERROR] Failed to open SQLite storage: %e", err)
 	}
-	store.Cleanup(ctx)
+	assert.NoError(t, store.Cleanup(ctx))
 
 	timeNow := time.Now()
 

@@ -39,10 +39,10 @@ func Test_FreeUpSpace(t *testing.T) {
 	client := client.NewZoomClient(cfg.Client)
 
 	repo := NewRepository(store, client, cfg)
-	repo.prepareDestination(cfg.Storage.Repository)
+	assert.NoError(t, repo.prepareDestination(cfg.Storage.Repository))
 
 	// Test when there is enough free space
-	store.Cleanup(ctx)
+	assert.NoError(t, store.Cleanup(ctx))
 	timeNow := time.Now()
 	testRecords := []model.Record{
 		{
@@ -84,8 +84,8 @@ func Test_FreeUpSpace(t *testing.T) {
 	}
 
 	for _, rec := range testRecords {
-		repo.prepareDestination(cfg.Storage.Repository + "/" + time.Now().Format("2006-01-02") + "/" + rec.Id)
-		os.WriteFile(rec.FilePath, []byte("test"), 0644)
+		assert.NoError(t, repo.prepareDestination(cfg.Storage.Repository+"/"+time.Now().Format("2006-01-02")+"/"+rec.Id))
+		assert.NoError(t, os.WriteFile(rec.FilePath, []byte("test"), 0644))
 	}
 
 	testMeeting := model.Meeting{
@@ -123,7 +123,7 @@ func Test_FreeUpSpace(t *testing.T) {
 	}
 
 	// Testing happy path - when there is not enough free space
-	store.Cleanup(ctx)
+	assert.NoError(t, store.Cleanup(ctx))
 
 	timeNow = time.Now()
 	testRecords = []model.Record{
@@ -177,8 +177,8 @@ func Test_FreeUpSpace(t *testing.T) {
 	log.Println("Free space before test: ", usage.Free)
 
 	for _, rec := range testRecords {
-		repo.prepareDestination(cfg.Storage.Repository + "/" + time.Now().Format("2006-01-02") + "/" + rec.Id)
-		os.WriteFile(rec.FilePath, []byte("test"), 0644)
+		assert.NoError(t, repo.prepareDestination(cfg.Storage.Repository+"/"+time.Now().Format("2006-01-02")+"/"+rec.Id))
+		assert.NoError(t, os.WriteFile(rec.FilePath, []byte("test"), 0644))
 	}
 
 	testMeeting = model.Meeting{

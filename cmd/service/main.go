@@ -96,7 +96,9 @@ func (s *Server) startServer(ctx context.Context) {
 		IdleTimeout:       time.Second,
 	}
 
-	httpServer.ListenAndServe()
+	if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+		log.Printf("[ERROR] http server: %v", err)
+	}
 
 	<-ctx.Done()
 	log.Printf("[INFO] Terminating http server")
