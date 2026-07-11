@@ -340,7 +340,7 @@ func (r *Repository) meetingRecordsLoaded(ctx context.Context, meetingId string)
 // CleanupJob is a long running job that tries to delete recordings from Zoom Cloud if they are downloaded.
 // It calls /meetingsLoaded POST API of each instance listed in cfg.Commander.Instances to ask if the list of
 // meetings (uuids) recordings are downloaded. If all instances return "ok", the recordings are deleted.
-func (r *Repository) CleanupJob(ctx context.Context, daysAgo int) {
+func (r *Repository) CleanupJob(ctx context.Context, daysAgo int, force bool) {
 	var retry int
 	for {
 		meetings, err := r.client.GetMeetings(ctx, daysAgo)
@@ -386,7 +386,7 @@ func (r *Repository) CleanupJob(ctx context.Context, daysAgo int) {
 			continue
 		}
 
-		if loaded {
+		if loaded || force {
 			var deleted int
 			for _, meeting := range meetings {
 				select {

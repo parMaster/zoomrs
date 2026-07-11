@@ -61,7 +61,7 @@ func (s *Commander) Run(ctx context.Context, opts Options) error {
 		if opts.Trash == -1 { // -1 is default value, so "0" value is allowed - it will delete today's meetings
 			return fmt.Errorf("cleanupJob: '--trash' option (days) is not set")
 		}
-		r.CleanupJob(ctx, opts.Trash)
+		r.CleanupJob(ctx, opts.Trash, opts.Force)
 	case "cloudcap":
 		log.Printf("[INFO] starting DeleteRecordingsOverCapacity")
 		// Last line of defence against Zoom cloud storage overuse:
@@ -169,6 +169,7 @@ type Options struct {
 	Config string `long:"config" env:"CONFIG" default:"config_cli.yml" description:"yaml config file name"`
 	Days   int    `long:"days" env:"DEBUG" description:"(today - 'days') day to sync. Default is 1 (yesterday)" default:"1"`
 	Dbg    bool   `long:"dbg" env:"DEBUG" description:"show debug info"`
+	Force  bool   `long:"force" env:"FORCE" description:"force operation, e.g. cleanup job won't confirm meetings are loaded"`
 	Trash  int    `long:"trash" description:"trash old meetings after N days. Required when '--cmd=trash'" default:"-1"`
 	Cmd    string `long:"cmd" description:"run command"`
 }
