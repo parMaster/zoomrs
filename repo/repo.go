@@ -50,6 +50,7 @@ type Repository struct {
 	client   Client
 	cfg      *config.Parameters
 	Syncable syncable
+	diskFree func(path string) (uint64, error) // free bytes on the drive holding path; tests swap it for a fake
 }
 
 func NewRepository(store storage.Storer, client Client, cfg *config.Parameters) *Repository {
@@ -69,7 +70,7 @@ func NewRepository(store storage.Storer, client Client, cfg *config.Parameters) 
 		sync.Optional[model.RecordType(t)] = true
 	}
 
-	return &Repository{store: store, client: client, cfg: cfg, Syncable: sync}
+	return &Repository{store: store, client: client, cfg: cfg, Syncable: sync, diskFree: diskFree}
 }
 
 // SyncJob is a long running job that tries SyncMeeting on a regular interval
@@ -494,35 +495,43 @@ func (r *Repository) CheckConsistency(ctx context.Context) (checked int, result 
 	return
 }
 
+func diskFree(path string) (uint64, error) {
+	usage, err := disk.Usage(path)
+	if err != nil {
+		return 0, err
+	}
+	return usage.Free, nil
+}
+
 // freeUpSpace deletes downloaded files if there is less than cfg.Storage.KeepFreeSpace bytes free
 // on the drive where cfg.Storage.Repository located
 func (r *Repository) freeUpSpace(ctx context.Context) (deleted int, result error) {
-	usage, err := disk.Usage(r.cfg.Storage.Repository)
+	free, err := r.diskFree(r.cfg.Storage.Repository)
 	if err != nil {
 		return 0, fmt.Errorf("failed to get disk usage: %w", err)
 	}
-	if usage.Free > uint64(r.cfg.Storage.KeepFreeSpace) {
+	if free > uint64(r.cfg.Storage.KeepFreeSpace) {
 		log.Printf("[DEBUG]Free space Available/Required: %d/%d bytes (%s/ %s) no need to free up space.",
-			usage.Free,
+			free,
 			r.cfg.Storage.KeepFreeSpace,
-			model.FileSize(usage.Free),
+			model.FileSize(free),
 			model.FileSize(r.cfg.Storage.KeepFreeSpace),
 		)
 		return 0, nil
 	}
-	log.Printf("[DEBUG] Free space Available/Required: %d/%d bytes (%s/ %s), %d bytes (%s) over the limit", usage.Free, r.cfg.Storage.KeepFreeSpace, model.FileSize(usage.Free), model.FileSize(r.cfg.Storage.KeepFreeSpace), r.cfg.Storage.KeepFreeSpace-usage.Free, model.FileSize(r.cfg.Storage.KeepFreeSpace-usage.Free))
+	log.Printf("[DEBUG] Free space Available/Required: %d/%d bytes (%s/ %s), %d bytes (%s) over the limit", free, r.cfg.Storage.KeepFreeSpace, model.FileSize(free), model.FileSize(r.cfg.Storage.KeepFreeSpace), r.cfg.Storage.KeepFreeSpace-free, model.FileSize(r.cfg.Storage.KeepFreeSpace-free))
 
 	recs, err := r.store.GetRecordsByStatus(ctx, model.StatusDownloaded)
 	if err != nil {
 		return deleted, fmt.Errorf("failed to get downloaded records %w", err)
 	}
 	for _, rec := range recs {
-		usage, err = disk.Usage(r.cfg.Storage.Repository)
+		free, err = r.diskFree(r.cfg.Storage.Repository)
 		if err != nil {
 			return deleted, fmt.Errorf("failed to get disk usage: %w", err)
 		}
-		if usage.Free > uint64(r.cfg.Storage.KeepFreeSpace) {
-			log.Printf("[INFO] Free space is %s (%d bytes), deleted %d records", model.FileSize(usage.Free), usage.Free, deleted)
+		if free > uint64(r.cfg.Storage.KeepFreeSpace) {
+			log.Printf("[INFO] Free space is %s (%d bytes), deleted %d records", model.FileSize(free), free, deleted)
 			break
 		}
 

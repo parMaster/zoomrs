@@ -309,6 +309,8 @@ sleep 1s && date && scp -r server.local:/data/`date --date="yesterday" +%Y-%m-%d
 ## Contributing
 Pull requests are welcome. For major changes, please open an issue first to discuss what you would like to change. Check the existing issues to see if your problem is already being discussed or if you're willing to help with one of them. Tests are highly appreciated.
 
+`make test` runs offline against fake Zoom servers and temp directories; `make lint` runs the pinned golangci-lint. Tests against the real Zoom API are behind a build tag and read credentials from `config/config_cli.yml`: `go test -tags integration ./client`. Careful: they call the real delete endpoint.
+
 ## License
 [GNU GPLv3](https://choosealicense.com/licenses/gpl-3.0/) © [Dmytro Borshchanenko](https://github.com/parMaster) 2023
 

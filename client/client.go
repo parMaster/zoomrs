@@ -27,16 +27,36 @@ type AccessToken struct {
 	ExpiresAt   time.Time `json:"-"`
 }
 
+const (
+	defaultAuthURL = "https://zoom.us"
+	defaultAPIURL  = "https://api.zoom.us/v2"
+)
+
 type ZoomClient struct {
-	cfg    *config.Client
-	client http.Client
-	token  *AccessToken
+	cfg     *config.Client
+	client  http.Client
+	token   *AccessToken
+	authURL string
+	apiURL  string
 }
 
-func NewZoomClient(cfg config.Client) *ZoomClient {
-	client := http.Client{}
+// Option configures a ZoomClient
+type Option func(*ZoomClient)
 
-	return &ZoomClient{cfg: &cfg, client: client}
+// WithBaseURLs overrides the Zoom OAuth and API base URLs, e.g. to point the client at a test server
+func WithBaseURLs(authURL, apiURL string) Option {
+	return func(z *ZoomClient) {
+		z.authURL = authURL
+		z.apiURL = apiURL
+	}
+}
+
+func NewZoomClient(cfg config.Client, opts ...Option) *ZoomClient {
+	z := &ZoomClient{cfg: &cfg, client: http.Client{}, authURL: defaultAuthURL, apiURL: defaultAPIURL}
+	for _, opt := range opts {
+		opt(z)
+	}
+	return z
 }
 
 // Authorize - get access token
@@ -47,7 +67,7 @@ func (z *ZoomClient) Authorize() error {
 	params.Add(`grant_type`, `account_credentials`)
 	params.Add(`account_id`, z.cfg.AccountId)
 
-	req, err := http.NewRequest(http.MethodPost, "https://zoom.us/oauth/token",
+	req, err := http.NewRequest(http.MethodPost, z.authURL+"/oauth/token",
 		strings.NewReader(params.Encode()))
 	if err != nil {
 		return err
@@ -125,7 +145,7 @@ func (z *ZoomClient) GetIntervalMeetings(ctx context.Context, from, to time.Time
 	params.Add(`to`, to.Format("2006-01-02"))
 	log.Printf("[DEBUG] initial params = %s", params.Encode())
 	req, err := http.NewRequest(http.MethodGet,
-		"https://api.zoom.us/v2/users/me/recordings?"+params.Encode(), nil)
+		z.apiURL+"/users/me/recordings?"+params.Encode(), nil)
 	if err != nil {
 		return nil, err
 	}
@@ -246,7 +266,7 @@ func (z *ZoomClient) GetCloudStorageReport(from, to string) (*model.CloudRecordi
 	params.Add(`from`, from)
 	params.Add(`to`, to)
 	log.Printf("[DEBUG] initial params = %s", params.Encode())
-	req, err := http.NewRequest(http.MethodGet, "https://api.zoom.us/v2/report/cloud_recording?"+
+	req, err := http.NewRequest(http.MethodGet, z.apiURL+"/report/cloud_recording?"+
 		params.Encode(), nil)
 	if err != nil {
 		return nil, err
@@ -306,7 +326,7 @@ func (z *ZoomClient) DeleteMeetingRecordings(meetingId string, delete bool) erro
 	// https://developers.zoom.us/docs/meeting-sdk/apis/#operation/recordingDelete
 	// If a UUID starts with "/" or contains "//" (example: "/ajXp112QmuoKj4854875=="),
 	// you must double encode the UUID before making an API request.
-	q := fmt.Sprintf("https://api.zoom.us/v2/meetings/%s/recordings?%s",
+	q := fmt.Sprintf("%s/meetings/%s/recordings?%s", z.apiURL,
 		url.QueryEscape(url.QueryEscape(meetingId)), params.Encode())
 	log.Printf("[DEBUG] deleting with url = %s, params = %s", q, params.Encode())
 	req, err := http.NewRequest(http.MethodDelete, q, nil)

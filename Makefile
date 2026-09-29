@@ -26,6 +26,12 @@ info:
 test:
 	go test ./...
 
+# Built with the Go that go.mod selects, so the linter can always read the code.
+# GOFLAGS is cleared because -mod=vendor breaks `go run pkg@version`.
+GOLANGCI_LINT_VERSION=v2.14.0
+lint:
+	GOFLAGS= GOTOOLCHAIN=$$(go env GOVERSION) go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION) run ./...
+
 run: build
 	go run ./cmd/service --config ./config/config.yml
 
@@ -79,4 +85,4 @@ release:
 	ls -l dist/release
 
 
-.PHONY: build buildsvc dbg test run info status deploy start stop cli release
+.PHONY: build buildsvc dbg test lint run info status deploy start stop cli release

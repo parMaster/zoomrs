@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -64,36 +65,67 @@ func seedMeeting(t *testing.T, cfg *config.Parameters, store storage.Storer) {
 
 	require.NoError(t, store.SaveMeeting(context.Background(), meeting))
 	require.NoError(t, os.WriteFile(records[0].FilePath, []byte("videodat"), 0644)) // 8 bytes
-	require.NoError(t, os.WriteFile(records[1].FilePath, []byte("aud4"), 0644))      // 4 bytes
+	require.NoError(t, os.WriteFile(records[1].FilePath, []byte("aud4"), 0644))     // 4 bytes
+}
+
+// fakeZoomAPI answers the two Zoom endpoints the service calls on its own: the OAuth
+// token and the cloud recording report
+type fakeZoomAPI struct {
+	srv          *httptest.Server
+	reportCalls  atomic.Int32
+	reportStatus atomic.Int32
+	report       atomic.Value // string
+}
+
+func newFakeZoomAPI(t *testing.T) *fakeZoomAPI {
+	t.Helper()
+	f := &fakeZoomAPI{}
+	f.reportStatus.Store(http.StatusOK)
+	f.report.Store(`{"cloud_recording_storage":[
+		{"date":"2024-01-06","usage":"1 GB","plan_usage":"0","free_usage":"10 GB"},
+		{"date":"2024-01-07","usage":"2 GB","plan_usage":"0","free_usage":"10 GB"}]}`)
+	mux := http.NewServeMux()
+	mux.HandleFunc("POST /oauth/token", func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"access_token":"tok","expires_in":3600}`))
+	})
+	mux.HandleFunc("GET /report/cloud_recording", func(w http.ResponseWriter, _ *http.Request) {
+		f.reportCalls.Add(1)
+		w.WriteHeader(int(f.reportStatus.Load()))
+		_, _ = w.Write([]byte(f.report.Load().(string)))
+	})
+	f.srv = httptest.NewServer(mux)
+	t.Cleanup(f.srv.Close)
+	return f
 }
 
 // newTestServer builds a fully wired Server (real sqlite storage, real repo,
-// real auth service) suitable for exercising router(ctx) end to end without
-// touching the network.
+// real auth service, Zoom client pointed at a fake API) suitable for exercising
+// router(ctx) end to end without touching the network.
 func newTestServer(t *testing.T) (*Server, context.Context) {
 	t.Helper()
+	s, ctx, _ := newTestServerWithZoom(t)
+	return s, ctx
+}
 
-	cfgPath := "../../config/config_example.yml"
-	if os.Getenv("CONFIG") != "" {
-		cfgPath = os.Getenv("CONFIG")
-	}
-	cfg, err := config.NewConfig(cfgPath)
+func newTestServerWithZoom(t *testing.T) (*Server, context.Context, *fakeZoomAPI) {
+	t.Helper()
+
+	cfg, err := config.NewConfig("../../config/config_example.yml")
 	require.NoError(t, err)
 
 	cfg.Server.Dbg = false // serve web assets from the embedded FS, independent of test cwd
 	cfg.Storage.Repository = t.TempDir()
 	cfg.Storage.Path = "file:" + t.TempDir() + "/router_test.db?mode=rwc&_journal_mode=WAL"
 
-	ctx := context.Background()
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
 
 	var store storage.Storer
-	err = LoadStorage(ctx, cfg.Storage, &store)
-	if err != nil {
-		t.Skip(err.Error())
-	}
+	require.NoError(t, LoadStorage(ctx, cfg.Storage, &store))
 	seedMeeting(t, cfg, store)
 
-	zoomClient := client.NewZoomClient(cfg.Client)
+	zoom := newFakeZoomAPI(t)
+	zoomClient := client.NewZoomClient(cfg.Client, client.WithBaseURLs(zoom.srv.URL, zoom.srv.URL))
 	authService, err := webauth.NewAuthService(cfg.Server)
 	require.NoError(t, err)
 
@@ -105,7 +137,7 @@ func newTestServer(t *testing.T) (*Server, context.Context) {
 		repo:        repo.NewRepository(store, zoomClient, cfg),
 		cache:       mcache.NewCache[any](),
 	}
-	return srv, ctx
+	return srv, ctx, zoom
 }
 
 // authHeader mints a JWT for one of the configured managers and returns it
@@ -134,9 +166,6 @@ func TestRouter_PublicRoutes(t *testing.T) {
 	s, ctx := newTestServer(t)
 	router := s.router(ctx)
 
-	// /status is deliberately excluded here: on a cache miss it calls out to
-	// the real Zoom cloud-storage-report API, which makes it network-dependent
-	// and unsuitable for a hermetic router test.
 	cases := []struct {
 		name       string
 		method     string
@@ -146,6 +175,7 @@ func TestRouter_PublicRoutes(t *testing.T) {
 		{"root redirects anonymous user to login", http.MethodGet, "/", http.StatusFound},
 		{"login page", http.MethodGet, "/login", http.StatusOK},
 		{"favicon", http.MethodGet, "/favicon.ico", http.StatusOK},
+		{"status", http.MethodGet, "/status", http.StatusOK},
 		{"watch page with access key", http.MethodGet, "/watch/somekey", http.StatusOK},
 		{"watch page without access key is not found", http.MethodGet, "/watch/", http.StatusNotFound}, // {accessKey} wildcard requires a path segment
 		{"watchMeeting without uuid query param", http.MethodGet, "/watchMeeting/somekey", http.StatusBadRequest},

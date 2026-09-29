@@ -1,21 +1,36 @@
 package config
 
 import (
-	"log"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
-func Test_LoadConfig(t *testing.T) {
+func TestNewConfig_Errors(t *testing.T) {
+	_, err := NewConfig(filepath.Join(t.TempDir(), "missing.yml"))
+	assert.ErrorContains(t, err, "can't read config")
 
-	var conf *Parameters
-	var err error
-	conf, err = NewConfig("config_example.yml")
-	if err != nil {
-		log.Fatalf("[ERROR] can't load config, %s", err)
-	}
+	bad := filepath.Join(t.TempDir(), "bad.yml")
+	require.NoError(t, os.WriteFile(bad, []byte("server: [unclosed"), 0o600))
+	_, err = NewConfig(bad)
+	assert.ErrorContains(t, err, "failed to parse config")
+
+	badDelay := filepath.Join(t.TempDir(), "bad_delay.yml")
+	require.NoError(t, os.WriteFile(badDelay, []byte("client:\n  rate_limiting_delay:\n    light: fast\n"), 0o600))
+	_, err = NewConfig(badDelay)
+	assert.ErrorContains(t, err, "failed to parse config")
+}
+
+func Test_LoadConfig(t *testing.T) {
+	conf, err := NewConfig("config_example.yml")
+	require.NoError(t, err)
+	assert.Equal(t, 300*time.Millisecond, conf.Client.RateLimitingDelay.Light)
+	assert.Equal(t, 550*time.Millisecond, conf.Client.RateLimitingDelay.Medium)
+	assert.Equal(t, 1050*time.Millisecond, conf.Client.RateLimitingDelay.Heavy)
 	assert.NotEmpty(t, conf.Server)
 	assert.NotEmpty(t, conf.Server.Domain)
 	assert.NotEmpty(t, conf.Server.Listen)

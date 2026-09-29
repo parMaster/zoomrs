@@ -49,16 +49,18 @@ func NewAuthService(cfg config.Server) (*auth.Service, error) {
 			AuthURL:  "https://accounts.google.com/o/oauth2/auth",
 			TokenURL: "https://oauth2.googleapis.com/token",
 		},
-		InfoURL: "https://www.googleapis.com/oauth2/v2/userinfo",
-		MapUserFn: func(data provider.UserData, _ []byte) token.User {
-			userInfo := token.User{
-				ID:    "google_" + token.HashID(sha1.New(), data.Value("username")),
-				Name:  data.Value("nickname"),
-				Email: data.Value("email"),
-			}
-			return userInfo
-		},
-		Scopes: []string{"email"},
+		InfoURL:   "https://www.googleapis.com/oauth2/v2/userinfo",
+		MapUserFn: mapGoogleUser,
+		Scopes:    []string{"email"},
 	})
 	return authService, nil
+}
+
+// mapGoogleUser turns Google's userinfo response into a user; Email is what the managers check relies on
+func mapGoogleUser(data provider.UserData, _ []byte) token.User {
+	return token.User{
+		ID:    "google_" + token.HashID(sha1.New(), data.Value("username")),
+		Name:  data.Value("nickname"),
+		Email: data.Value("email"),
+	}
 }
