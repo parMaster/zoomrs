@@ -93,11 +93,11 @@ func NewConfig(fname string) (*Parameters, error) {
 	p := &Parameters{}
 	data, err := os.ReadFile(fname)
 	if err != nil {
-		log.Printf("[ERROR] can't read config %s: %e", fname, err)
+		log.Printf("[ERROR] can't read config %s: %v", fname, err)
 		return nil, fmt.Errorf("can't read config %s: %w", fname, err)
 	}
 	if err = yaml.Unmarshal(data, &p); err != nil {
-		log.Printf("[ERROR] failed to parse config %s: %e", fname, err)
+		log.Printf("[ERROR] failed to parse config %s: %v", fname, err)
 		return nil, fmt.Errorf("failed to parse config %s: %w", fname, err)
 	}
 	// log.Printf("[DEBUG] config: %+v", p)

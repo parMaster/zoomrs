@@ -203,7 +203,11 @@ func TestLoadStorage(t *testing.T) {
 	assert.NotNil(t, s)
 	assert.EqualError(t, LoadStorage(ctx, config.Storage{}, &s), "storage is not configured")
 	assert.EqualError(t, LoadStorage(ctx, config.Storage{Type: "mongo"}, &s), "storage type mongo is not supported")
-	// the sqlite error is formatted with %e, so only the prefix is reliable
 	err := LoadStorage(ctx, config.Storage{Type: "sqlite", Path: "file:" + filepath.Join(t.TempDir(), "no", "x.db") + "?mode=rwc"}, &s)
-	assert.ErrorContains(t, err, "failed to init SQLite storage")
+	assert.EqualError(t, err, "failed to init SQLite storage: unable to open database file: no such file or directory")
+
+	canceled, cancelNow := context.WithCancel(context.Background())
+	cancelNow()
+	err = LoadStorage(canceled, config.Storage{Type: "sqlite", Path: "file:" + filepath.Join(t.TempDir(), "y.db") + "?mode=rwc"}, &s)
+	assert.ErrorIs(t, err, context.Canceled)
 }

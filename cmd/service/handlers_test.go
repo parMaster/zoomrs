@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -407,9 +408,13 @@ func TestLoadStorage(t *testing.T) {
 
 	assert.EqualError(t, LoadStorage(ctx, config.Storage{}, &s), "storage is not configured")
 	assert.EqualError(t, LoadStorage(ctx, config.Storage{Type: "mongo"}, &s), "storage type mongo is not supported")
-	// the sqlite error is formatted with %e, so only the prefix is reliable
 	err := LoadStorage(ctx, config.Storage{Type: "sqlite", Path: "file:" + filepath.Join(t.TempDir(), "no", "x.db") + "?mode=rwc"}, &s)
-	assert.ErrorContains(t, err, "failed to init SQLite storage")
+	assert.EqualError(t, err, "failed to init SQLite storage: unable to open database file: no such file or directory")
+
+	canceled, cancelNow := context.WithCancel(context.Background())
+	cancelNow()
+	err = LoadStorage(canceled, config.Storage{Type: "sqlite", Path: "file:" + filepath.Join(t.TempDir(), "y.db") + "?mode=rwc"}, &s)
+	assert.ErrorIs(t, err, context.Canceled)
 }
 
 func newZoomClientFor(cfg *config.Parameters, zoom *fakeZoomAPI) *client.ZoomClient {
@@ -425,7 +430,10 @@ func freePort(t *testing.T) string {
 	return addr
 }
 
-func TestRun_ServesUntilCanceled(t *testing.T) {
+// startRun runs a server on a free port and waits until it answers.
+// done is closed when Run returns.
+func startRun(t *testing.T) (addr string, cancel context.CancelFunc, done chan struct{}) {
+	t.Helper()
 	cfg, err := config.NewConfig("../../config/config_example.yml")
 	require.NoError(t, err)
 	cfg.Server.Listen = freePort(t)
@@ -438,7 +446,8 @@ func TestRun_ServesUntilCanceled(t *testing.T) {
 	s.client = newZoomClientFor(cfg, zoom)
 
 	ctx, cancel := context.WithCancel(context.Background())
-	done := make(chan struct{})
+	t.Cleanup(cancel)
+	done = make(chan struct{})
 	go func() {
 		defer close(done)
 		s.Run(ctx)
@@ -453,12 +462,144 @@ func TestRun_ServesUntilCanceled(t *testing.T) {
 		return resp.StatusCode == http.StatusOK
 	}, 5*time.Second, 20*time.Millisecond)
 
+	return cfg.Server.Listen, cancel, done
+}
+
+func TestRun_ServesUntilCanceled(t *testing.T) {
+	addr, cancel, done := startRun(t)
+
 	cancel()
 	select {
 	case <-done:
 	case <-time.After(5 * time.Second):
 		t.Fatal("Run did not return after cancel")
 	}
+
+	_, err := net.DialTimeout("tcp", addr, time.Second)
+	assert.Error(t, err, "listener must be closed once Run has returned")
+}
+
+func TestRun_WaitsForOpenRequest(t *testing.T) {
+	addr, cancel, done := startRun(t)
+
+	// half a request line keeps the connection open until the server's header timeout (1s) drops it
+	conn, err := net.Dial("tcp", addr)
+	require.NoError(t, err)
+	defer func() { _ = conn.Close() }()
+	_, err = conn.Write([]byte("GET /favicon.ico"))
+	require.NoError(t, err)
+	time.Sleep(100 * time.Millisecond) // let the server accept the connection
+
+	cancel()
+	select {
+	case <-done:
+		t.Fatal("Run returned while a request was still open")
+	case <-time.After(300 * time.Millisecond):
+	}
+
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("Run did not return after the open request ended")
+	}
+}
+
+// startServe runs serveHTTP with a handler that reports each request on entered and
+// then blocks until release is closed. done is closed when serveHTTP returns.
+func startServe(t *testing.T, drain time.Duration) (addr string, cancel context.CancelFunc, entered, release, done chan struct{}) {
+	t.Helper()
+	addr = freePort(t)
+	entered = make(chan struct{}, 1)
+	release = make(chan struct{})
+	handler := http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
+		entered <- struct{}{}
+		<-release
+		_, _ = rw.Write([]byte("finished"))
+	})
+
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	done = make(chan struct{})
+	go func() {
+		defer close(done)
+		serveHTTP(ctx, addr, handler, drain)
+	}()
+
+	require.Eventually(t, func() bool {
+		conn, err := net.Dial("tcp", addr)
+		if err != nil {
+			return false
+		}
+		_ = conn.Close()
+		return true
+	}, 5*time.Second, 20*time.Millisecond)
+
+	return addr, cancel, entered, release, done
+}
+
+func TestServe_FinishesOpenRequestOnCancel(t *testing.T) {
+	addr, cancel, entered, release, done := startServe(t, 5*time.Second)
+
+	type answer struct {
+		code int
+		body string
+		err  error
+	}
+	got := make(chan answer, 1)
+	go func() {
+		resp, err := http.Get("http://" + addr + "/")
+		if err != nil {
+			got <- answer{err: err}
+			return
+		}
+		body, err := io.ReadAll(resp.Body)
+		_ = resp.Body.Close()
+		got <- answer{code: resp.StatusCode, body: string(body), err: err}
+	}()
+
+	<-entered
+	cancel()
+	select {
+	case <-done:
+		t.Fatal("serve returned while a request was still being answered")
+	case <-time.After(200 * time.Millisecond):
+	}
+
+	close(release)
+	a := <-got
+	require.NoError(t, a.err)
+	assert.Equal(t, http.StatusOK, a.code)
+	assert.Equal(t, "finished", a.body)
+
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("serve did not return after the request finished")
+	}
+}
+
+func TestServe_StuckRequestDoesNotHangShutdown(t *testing.T) {
+	addr, cancel, entered, release, done := startServe(t, 100*time.Millisecond)
+	// Close drops the connection but the handler keeps running until released
+	t.Cleanup(func() { close(release) })
+
+	go func() {
+		resp, err := http.Get("http://" + addr + "/")
+		if err == nil {
+			_ = resp.Body.Close()
+		}
+	}()
+
+	<-entered
+	cancel()
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("serve did not return after the drain timeout")
+	}
+
+	_, err := net.DialTimeout("tcp", addr, time.Second)
+	assert.Error(t, err, "listener must be closed once serve has returned")
 }
 
 func TestStartServer_BadAddressReturnsAfterCancel(t *testing.T) {
