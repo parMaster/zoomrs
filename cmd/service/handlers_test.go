@@ -171,13 +171,38 @@ func TestStatusHandler(t *testing.T) {
 		assert.Equal(t, http.StatusInternalServerError, rw.Code, "disk usage fails")
 	})
 
-	t.Run("panics when nothing is downloaded yet", func(t *testing.T) {
-		// BUG: with records but no downloaded video, ListMeetings is empty and the handler
-		// indexes meetingsLoaded[0]; net/http recovers it, so the client just sees the connection drop
+	t.Run("nothing downloaded yet leaves out last_downloaded", func(t *testing.T) {
 		s, ctx, _ := newTestServerWithZoom(t)
-		s.store = &stubStore{Storer: s.store, listMeetings: func(context.Context) ([]model.Meeting, error) { return nil, nil }}
-		h := s.statusHandler(ctx)
-		assert.Panics(t, func() { h(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/status", nil)) })
+		require.NoError(t, s.store.DeleteMeeting(ctx, "testUUID"))
+		rw, resp := get(t, s, ctx)
+		require.Equal(t, http.StatusOK, rw.Code)
+		assert.Equal(t, "OK", resp.Status)
+		assert.Empty(t, resp.Stats)
+		assert.Contains(t, resp.Storage, "free")
+		assert.NotContains(t, rw.Body.String(), "last_downloaded")
+	})
+
+	t.Run("only audio downloaded leaves out last_downloaded", func(t *testing.T) {
+		s, ctx, _ := newTestServerWithZoom(t)
+		require.NoError(t, s.store.UpdateRecord(ctx, "recMP4", model.StatusDeleted, ""))
+		rw, resp := get(t, s, ctx)
+		require.Equal(t, http.StatusOK, rw.Code)
+		assert.Contains(t, resp.Stats, "downloaded")
+		assert.NotContains(t, rw.Body.String(), "last_downloaded")
+	})
+
+	t.Run("last_downloaded shows up right after the first video lands", func(t *testing.T) {
+		s, ctx, _ := newTestServerWithZoom(t)
+		require.NoError(t, s.store.DeleteMeeting(ctx, "testUUID"))
+		rw, _ := get(t, s, ctx)
+		require.Equal(t, http.StatusOK, rw.Code)
+		require.NotContains(t, rw.Body.String(), "last_downloaded")
+
+		require.NoError(t, s.store.SaveMeeting(ctx, model.Meeting{UUID: "m2", StartTime: time.Now(),
+			Records: []model.Record{{Id: "v", MeetingId: "m2", StartTime: time.Now(), FileExtension: "MP4", Status: model.StatusDownloaded}}}))
+		rw, resp := get(t, s, ctx)
+		require.Equal(t, http.StatusOK, rw.Code)
+		assert.NotEmpty(t, resp.LastDownloaded)
 	})
 }
 
@@ -302,13 +327,19 @@ func TestMeetingsLoadedHandler(t *testing.T) {
 		assert.Equal(t, "pending", result)
 	})
 
-	t.Run("ok even when a downloaded file is missing", func(t *testing.T) {
-		// BUG: a missing file is not checked, so the meeting counts as loaded and CleanupJob
-		// may delete the only remaining copy from Zoom
+	t.Run("pending when a downloaded file is missing", func(t *testing.T) {
+		// an "ok" here lets CleanupJob delete what may be the only remaining copy from Zoom
 		s, ctx := newTestServer(t)
 		require.NoError(t, os.Remove(filepath.Join(s.cfg.Storage.Repository, "recM4A.m4a")))
 		_, result := ask(t, s, ctx, `{"meetings":["testUUID"]}`)
-		assert.Equal(t, "ok", result)
+		assert.Equal(t, "pending", result)
+	})
+
+	t.Run("pending when a downloaded record has no file path", func(t *testing.T) {
+		s, ctx := newTestServer(t)
+		require.NoError(t, s.store.UpdateRecord(ctx, "recM4A", model.StatusDownloaded, ""))
+		_, result := ask(t, s, ctx, `{"meetings":["testUUID"]}`)
+		assert.Equal(t, "pending", result)
 	})
 
 	t.Run("bad request bodies are 500", func(t *testing.T) {
@@ -327,12 +358,12 @@ func TestMeetingsLoadedHandler(t *testing.T) {
 	})
 }
 
-func TestStatsHandler_NoDownloadsIs500(t *testing.T) {
-	// BUG: repo.GetStats errors on an empty result, so a fresh install gets a 500 here
+func TestStatsHandler_NoDownloadsIsEmptyMap(t *testing.T) {
 	s, ctx := newTestServer(t)
 	require.NoError(t, s.store.DeleteMeeting(ctx, "testUUID"))
 	rw := serve(t, s.router(ctx), http.MethodGet, "/stats/K", nil, "X-JWT", authHeader(t, s))
-	assert.Equal(t, http.StatusInternalServerError, rw.Code)
+	require.Equal(t, http.StatusOK, rw.Code)
+	assert.JSONEq(t, `{}`, rw.Body.String())
 }
 
 func TestIndexPage_LoggedInUserGetsTheApp(t *testing.T) {

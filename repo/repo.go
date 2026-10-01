@@ -51,6 +51,9 @@ type Repository struct {
 	cfg      *config.Parameters
 	Syncable syncable
 	diskFree func(path string) (uint64, error) // free bytes on the drive holding path; tests swap it for a fake
+	// asks other instances about loaded meetings; tests swap it. The timeout matches the
+	// service's WriteTimeout - the server cuts a longer answer anyway.
+	httpClient *http.Client
 }
 
 func NewRepository(store storage.Storer, client Client, cfg *config.Parameters) *Repository {
@@ -70,7 +73,8 @@ func NewRepository(store storage.Storer, client Client, cfg *config.Parameters) 
 		sync.Optional[model.RecordType(t)] = true
 	}
 
-	return &Repository{store: store, client: client, cfg: cfg, Syncable: sync, diskFree: diskFree}
+	return &Repository{store: store, client: client, cfg: cfg, Syncable: sync, diskFree: diskFree,
+		httpClient: &http.Client{Timeout: 30 * time.Second}}
 }
 
 // SyncJob is a long running job that tries SyncMeeting on a regular interval
@@ -436,29 +440,36 @@ func (r *Repository) requestMeetingsLoaded(meetings []string) (loaded bool, err 
 	}
 
 	for _, instance := range r.cfg.Commander.Instances {
-		url := fmt.Sprintf("%s/meetingsLoaded/%s", instance, r.cfg.Server.AccessKeySalt)
-		resp, err := http.Post(url, "application/json", bytes.NewBuffer(body))
-		if err != nil {
-			return false, fmt.Errorf("failed to post meetingsLoaded to %s, %v", instance, err)
-		}
-		defer func() { _ = resp.Body.Close() }()
-		if resp.StatusCode != http.StatusOK {
-			return false, fmt.Errorf("failed to post meetingsLoaded to %s, status %d", instance, resp.StatusCode)
-		}
-		var result struct {
-			Result string `json:"result"`
-		}
-		err = json.NewDecoder(resp.Body).Decode(&result)
-		if err != nil {
-			return false, fmt.Errorf("failed to decode response body, %v", err)
-		}
-		log.Printf("[INFO] %s/meetingsLoaded result: %v", instance, result)
-		if result.Result != "ok" {
-			return false, nil
+		ok, err := r.instanceMeetingsLoaded(instance, body)
+		if err != nil || !ok {
+			return false, err
 		}
 	}
 	// all instances returned "ok"
 	return true, nil
+}
+
+// instanceMeetingsLoaded asks one instance; a function of its own so the response body
+// is closed before the next instance is asked
+func (r *Repository) instanceMeetingsLoaded(instance string, body []byte) (loaded bool, err error) {
+	url := fmt.Sprintf("%s/meetingsLoaded/%s", instance, r.cfg.Server.AccessKeySalt)
+	resp, err := r.httpClient.Post(url, "application/json", bytes.NewBuffer(body))
+	if err != nil {
+		return false, fmt.Errorf("failed to post meetingsLoaded to %s, %v", instance, err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		return false, fmt.Errorf("failed to post meetingsLoaded to %s, status %d", instance, resp.StatusCode)
+	}
+	var result struct {
+		Result string `json:"result"`
+	}
+	err = json.NewDecoder(resp.Body).Decode(&result)
+	if err != nil {
+		return false, fmt.Errorf("failed to decode response body, %v", err)
+	}
+	log.Printf("[INFO] %s/meetingsLoaded result: %v", instance, result)
+	return result.Result == "ok", nil
 }
 
 // CheckConsistency checks if all downloaded files exist and have correct size
@@ -573,7 +584,7 @@ func (r *Repository) freeUpSpace(ctx context.Context) (deleted int, result error
 // if d is not one of the supported dividers, the size is returned in bytes
 func (r *Repository) GetStats(ctx context.Context, d rune) (stats map[string]int64, err error) {
 	recs, err := r.store.GetRecordsByStatus(ctx, model.StatusDownloaded)
-	if recs == nil {
+	if err != nil {
 		return nil, fmt.Errorf("failed to get records by status %s: %w", model.StatusDownloaded, err)
 	}
 

@@ -144,6 +144,8 @@ status can be:
 
 `stats` section contains number of recordings and their total size in GB and MB grouped by status
 
+`last_downloaded` is the start time of the latest meeting that has a downloaded video. It is left out until the first video is downloaded (a fresh install, or only audio so far) - the rest of the response is still returned.
+
 `cloud` section contains Zoom cloud storage usage stats. `date` is the last time the stats were updated (it is updated every 24 hours, so if you see the date is not today, it means the stats dodn't change since then), `free_usage` is the amount of free storage, `plan_usage` is the amount of storage available for the current plan, `usage` is the amount of storage used by recordings, `usage_percent` is the percentage of used storage.
 
 `storage` section contains the stats of the local storage. `free` is the amount of free storage, `total` is the total amount of storage, `usage_percent` is the percentage of used storage, `used` is the amount of used storage.
@@ -184,7 +186,7 @@ Auth required. Runs a consistency check of the repository (see `check` cli tool 
 ```
 
 #### GET `/stats[/<K|M|G>]`
-Auth required. Returns the total size of the recordings grouped by date. Optional parameter `K`, `M` or `G` can be used to specify the size in KB, MB or GB respectively. If no parameter is specified, the size is returned in bytes. Example response:
+Auth required. Returns the total size of the recordings grouped by date. Optional parameter `K`, `M` or `G` can be used to specify the size in KB, MB or GB respectively. If no parameter is specified, the size is returned in bytes. When nothing is downloaded yet, the response is an empty object `{}`. Example response:
 ```json
 {
 	"2023-03-20":31,
@@ -221,6 +223,7 @@ Response when some meetings are not loaded:
 	"result":"pending"
 }
 ```
+A meeting counts as loaded only when every record is `downloaded` and its file is on disk with the expected size. A file that is missing or can't be read gives `pending`, so the caller never deletes a recording from Zoom that this instance can't show a copy of.
 
 ## CLI tool
 Zoomrs comes with a CLI tool to trash/delete recordings from Zoom Cloud. It is useful when running miltiple servers and you want to delete recordings from Zoom Cloud only after all servers have downloaded them. CLI tool is located at `cmd/cli/main.go`. Run `make` to build it and put to `dist/zoomrs-cli`.

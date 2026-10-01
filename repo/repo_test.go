@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -668,6 +669,76 @@ func TestRequestMeetingsLoaded(t *testing.T) {
 		_, err = r.requestMeetingsLoaded([]string{"m1"})
 		assert.ErrorContains(t, err, "failed to post meetingsLoaded")
 	})
+
+	t.Run("an instance that never answers is an error, not a hang", func(t *testing.T) {
+		r, _, _, cfg := newTestRepo(t)
+		release := make(chan struct{})
+		stalled := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { <-release }))
+		t.Cleanup(stalled.Close)
+		t.Cleanup(func() { close(release) }) // runs before Close, which waits for the handler
+		cfg.Commander.Instances = []string{stalled.URL}
+		r.httpClient = &http.Client{Timeout: 50 * time.Millisecond}
+
+		done := make(chan error, 1)
+		go func() {
+			_, err := r.requestMeetingsLoaded([]string{"m1"})
+			done <- err
+		}()
+		select {
+		case err := <-done:
+			assert.ErrorContains(t, err, "failed to post meetingsLoaded to "+stalled.URL)
+		case <-time.After(5 * time.Second):
+			t.Fatal("requestMeetingsLoaded is still waiting for the instance")
+		}
+	})
+
+	t.Run("each response body is closed before the next instance is asked", func(t *testing.T) {
+		r, _, _, cfg := newTestRepo(t)
+		ok1, _ := instance(t, http.StatusOK, `{"result":"ok"}`)
+		ok2, _ := instance(t, http.StatusOK, `{"result":"ok"}`)
+		ok3, _ := instance(t, http.StatusOK, `{"result":"ok"}`)
+		bad, _ := instance(t, http.StatusForbidden, "")
+		garbled, _ := instance(t, http.StatusOK, "not json")
+
+		for name, last := range map[string]*httptest.Server{"ok": ok3, "non-200": bad, "garbled body": garbled} {
+			tr := &bodyTrackingTransport{}
+			r.httpClient = &http.Client{Transport: tr}
+			cfg.Commander.Instances = []string{ok1.URL, ok2.URL, last.URL}
+			_, _ = r.requestMeetingsLoaded([]string{"m1"})
+			assert.Equal(t, int32(3), tr.requests.Load(), name)
+			assert.Equal(t, int32(1), tr.maxOpen.Load(), "%s: bodies open at once", name)
+			assert.Equal(t, int32(0), tr.open.Load(), "%s: bodies left open", name)
+		}
+	})
+}
+
+// bodyTrackingTransport counts response bodies that are open at the same time
+type bodyTrackingTransport struct {
+	requests, open, maxOpen atomic.Int32
+}
+
+func (tr *bodyTrackingTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	resp, err := http.DefaultTransport.RoundTrip(req)
+	if err != nil {
+		return nil, err
+	}
+	tr.requests.Add(1)
+	if open := tr.open.Add(1); open > tr.maxOpen.Load() {
+		tr.maxOpen.Store(open)
+	}
+	resp.Body = &trackedBody{ReadCloser: resp.Body, tr: tr}
+	return resp, nil
+}
+
+type trackedBody struct {
+	io.ReadCloser
+	tr   *bodyTrackingTransport
+	once sync.Once
+}
+
+func (b *trackedBody) Close() error {
+	b.once.Do(func() { b.tr.open.Add(-1) })
+	return b.ReadCloser.Close()
 }
 
 func TestCleanupJob(t *testing.T) {
@@ -997,12 +1068,22 @@ func TestGetStats(t *testing.T) {
 		}
 	})
 
-	t.Run("no downloaded records is an error", func(t *testing.T) {
-		// BUG: an empty result comes back from sqlite as a nil slice, and GetStats treats nil as a
-		// failure, so a fresh install gets an error (and /stats a 500) instead of an empty map
+	t.Run("no downloaded records is an empty map", func(t *testing.T) {
+		// sqlite answers an empty result with a nil slice, which must not be read as a failure
 		r, _, _, _ := newTestRepo(t)
 		stats, err := r.GetStats(ctx, 'K')
-		assert.Error(t, err)
+		require.NoError(t, err)
+		assert.NotNil(t, stats)
+		assert.Empty(t, stats)
+	})
+
+	t.Run("store error wins over rows returned with it", func(t *testing.T) {
+		r, store, _, _ := newTestRepo(t)
+		r.store = &stubStore{Storer: store, getRecordsByStatus: func(context.Context, model.RecordStatus) ([]model.Record, error) {
+			return []model.Record{{Id: "a", DateTime: "2024-03-01 10:00:00", FileSize: 1}}, errBoom
+		}}
+		stats, err := r.GetStats(ctx, 'K')
+		assert.ErrorIs(t, err, errBoom)
 		assert.Nil(t, stats)
 	})
 
