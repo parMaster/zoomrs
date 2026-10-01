@@ -20,6 +20,7 @@ vendor/
 # ignore configs with secrets
 config/config_dbg.yml
 config/config.yml
+config/config_cli.yml
 
 # binaries and distribution artifacts
 dist/
