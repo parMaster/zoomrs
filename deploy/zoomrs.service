@@ -1,0 +1,52 @@
+[Unit]
+Description=Zoom Records Service
+After=network-online.target
+Wants=network-online.target
+
+# retry forever with Restart=always + RestartSec=30 rather than giving up
+# after systemd's default burst-limit window
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+Restart=always
+RestartSec=30
+User=%USER%
+ExecStart=/usr/bin/zoomrs --config /etc/zoomrs/config.yml
+StandardOutput=append:/var/log/zoomrs.log
+StandardError=append:/var/log/zoomrs.err
+
+# Sandbox. The service runs as the deploy user, so keep a bug in it away
+# from that user's sudo, home directory and SSH keys.
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+ProtectSystem=strict
+ProtectHome=yes
+# /data holds the recordings and the SQLite database; WAL mode writes
+# -wal/-shm files next to it, and old recordings get deleted from it
+ReadWritePaths=/data -/var/log/zoomrs.log -/var/log/zoomrs.err
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectProc=invisible
+ProtectClock=yes
+ProtectHostname=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+# AF_NETLINK: glibc's resolver (cgo build) uses it to check the host's addresses
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX AF_NETLINK
+# No RemoveIPC=: with a login account as User= it would delete that
+# person's own IPC objects every time the service stops.
+
+[Install]
+WantedBy=multi-user.target

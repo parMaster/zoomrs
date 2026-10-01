@@ -62,10 +62,10 @@ See `config/config_example.yml` for example configuration file, available option
 4. To stop the service press `Ctrl+C` (or send `SIGINT`, `SIGTERM` signal to the process)
 
 ### Systemd service
-1. Repeat steps 1 and 2 from the previous section
-2. Run `make deploy` to build the binary and copy everything where it belongs (see `Makefile` for details), enable and run the service
+1. Clone the repository and put the configuration at `/etc/zoomrs/config.yml` (deploy never copies it from the repo)
+2. Run `make deploy` from the `deploy/` folder to build the binary and copy everything where it belongs (see `deploy/Makefile` for details), enable and run the service
 	```sh
-	make deploy
+	cd deploy && make deploy
 	```
 3. Run `make status` to check the status of the service
 
@@ -73,7 +73,7 @@ See `config/config_example.yml` for example configuration file, available option
 	make status
 	```
 
-Log files are located at `/var/log/zoomrs.log` and `/var/log/zoomrs.err` by default.
+Log files are located at `/var/log/zoomrs.log` and `/var/log/zoomrs.err` by default. The unit is sandboxed and can only write to `/data`, see [deploy/README.md](deploy/README.md).
 
 ### Docker container
 1. Clone the repository from GitHub
@@ -303,10 +303,10 @@ sleep 1s && date && scp -r server.local:/data/`date --date="yesterday" +%Y-%m-%d
 
 > [!NOTE]
 > Database backup
-> Backup database file regularly to prevent data loss. See example shell script at `dist/backup_db.sh`. It can be run as a cron job like this:
+> Backup database file regularly to prevent data loss. See example shell script at `deploy/backup_db.sh`. It can be run as a cron job like this:
 
 ```sh
-0 10 * * * sh $HOME/go/src/zoomrs/backup_db.sh
+0 10 * * * sh $HOME/go/src/zoomrs/deploy/backup_db.sh
 ```
 
 ## Contributing

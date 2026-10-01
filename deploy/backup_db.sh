@@ -15,4 +15,4 @@ cp -r /data/_db $HOME/backups/$now
 cd $HOME/backups/ && tar -czf "${now}.tar.gz" "${now}" && rm -rf "${now}"
 
 # cron job to run this script every day at 10am
-# 0 10 * * * sh $HOME/go/src/zoomrs/backup_db.sh
+# 0 10 * * * sh $HOME/go/src/zoomrs/deploy/backup_db.sh

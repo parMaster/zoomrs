@@ -3,11 +3,6 @@ BRANCH=$(subst /,-,$(B))
 GITREV=$(shell git describe --abbrev=7 --always --tags)
 REV=$(GITREV)-$(BRANCH)-$(shell date +%Y%m%d)
 
-# get current user name
-USER=$(shell whoami)
-# get current user group
-GROUP=$(shell id -gn)
-
 .DEFAULT_GOAL: build
 
 build: info
@@ -38,29 +33,6 @@ run: build
 dbg:
 	go run ./cmd/service --dbg --config ./config/config_dbg.yml
 
-status:
-	sudo systemctl status zoomrs.service
-
-stop:
-	sudo systemctl stop zoomrs.service
-
-start:
-	sudo systemctl start zoomrs.service
-
-deploy:
-	make build
-	sudo systemctl stop zoomrs.service || true
-	sudo cp dist/zoomrs /usr/bin/
-	sudo chown $(USER):$(GROUP) /usr/bin/zoomrs
-	sed -i "s/%USER%/$(USER)/g" dist/zoomrs.service
-	sudo cp dist/zoomrs.service /etc/systemd/system/
-	sudo mkdir -p /etc/zoomrs
-	sudo chown $(USER):$(GROUP) /etc/zoomrs
-	cp config/config.yml /etc/zoomrs/
-	sudo systemctl daemon-reload
-	sudo systemctl enable zoomrs.service
-	sudo systemctl start zoomrs.service
-
 cli:
 	go build -o dist/zoomrs-cli -v ./cmd/cli
 	./dist/zoomrs-cli --config ./config/config_cli.yml
@@ -85,4 +57,4 @@ release:
 	ls -l dist/release
 
 
-.PHONY: build buildsvc dbg test lint run info status deploy start stop cli release
+.PHONY: build buildsvc buildcli dbg test lint run info cli release

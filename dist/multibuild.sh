@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 # Define the arrays of OS and architecture
 os=("linux" "darwin" "windows")
