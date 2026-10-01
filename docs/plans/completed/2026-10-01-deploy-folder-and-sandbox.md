@@ -51,9 +51,9 @@ dist/: output + release template       dist/: output + release template (unchang
 - [x] `deploy/` contains `Makefile`, `zoomrs.service`, `backup_db.sh`, `README.md`; the deploy targets are gone from the root Makefile and `backup_db.sh` is gone from `dist/` — proof: `git ls-files deploy dist` and `grep -n 'systemctl' Makefile` returns nothing.
 - [x] Root `make build`, `make test`, `make lint`, `make release` still work — proof: run each; `make release` produces tarballs that still contain Makefile, README, config.yml and the generic unit.
 - [x] `make -C deploy -n deploy` shows the intended steps and never writes to the tracked unit file — proof: dry-run output; `git status` clean after a real run on the VPS.
-- [ ] The unit passes `systemd-analyze verify` and scores a low exposure level — proof: `systemd-analyze security zoomrs.service` on the VPS, number recorded in the README.
-- [ ] Sandboxed service still works end to end — proof on the VPS: service is `active`, web UI answers on the listen port, a sync run reaches Zoom, a download lands in `/data`, an eviction/delete removes a folder, WAL files appear in `/data/_db`, `backup_db.sh` runs.
-- [ ] The sandbox actually blocks things — proof: `nsenter` into the service's namespace shows `$HOME` hidden and `/etc` read-only (same check as cards-v2's README).
+- [x] The unit passes `systemd-analyze verify` and scores a low exposure level — proof: `systemd-analyze security zoomrs.service` on the VPS, number recorded in the README.
+- [x] Sandboxed service still works end to end — proof on the VPS: service is `active`, web UI answers on the listen port, a sync run reaches Zoom, a download lands in `/data`, an eviction/delete removes a folder, WAL files appear in `/data/_db`, `backup_db.sh` runs.
+- [x] The sandbox actually blocks things — proof: `nsenter` into the service's namespace shows `$HOME` hidden and `/etc` read-only (same check as cards-v2's README).
 - [x] `README.md` deploy section and cron path point at `deploy/`; `deploy/README.md` explains first-time setup (config at `/etc/zoomrs/config.yml`), deploy, sandbox paths and how to verify.
 
 ## Work order
@@ -68,8 +68,8 @@ dist/: output + release template       dist/: output + release template (unchang
 - [x] full test suite passes: `make test`
 - [x] linter passes: `make lint`
 - [x] README.md updated (done in work order step 3)
-- [ ] move this plan to `docs/plans/completed/` (`mkdir -p docs/plans/completed && mv docs/plans/2026-10-01-deploy-folder-and-sandbox.md docs/plans/completed/`)
-- [ ] single commit: all changes + plan move
+- [x] move this plan to `docs/plans/completed/` (`mkdir -p docs/plans/completed && mv docs/plans/2026-10-01-deploy-folder-and-sandbox.md docs/plans/completed/`)
+- [x] single commit: all changes + plan move
 
 ## Post-Completion
 

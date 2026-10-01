@@ -32,7 +32,7 @@ Outside the sandbox and unaffected: `backup_db.sh` (cron), `zoomrs-cli`.
 
 ```sh
 systemd-analyze verify /etc/systemd/system/zoomrs.service
-systemd-analyze security zoomrs.service      # exposure level at the bottom
+systemd-analyze security zoomrs.service      # exposure level at the bottom, 1.5 OK on the last check
 systemctl status zoomrs.service              # must be active (running)
 
 # what the service sees: $HOME hidden, /etc read-only, /data writable
