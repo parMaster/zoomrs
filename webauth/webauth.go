@@ -51,7 +51,7 @@ func NewAuthService(cfg config.Server) (*auth.Service, error) {
 		},
 		InfoURL:   "https://www.googleapis.com/oauth2/v2/userinfo",
 		MapUserFn: mapGoogleUser,
-		Scopes:    []string{"email"},
+		Scopes:    []string{"email", "profile"}, // profile is what makes Google return name and picture
 	})
 	return authService, nil
 }
@@ -59,8 +59,10 @@ func NewAuthService(cfg config.Server) (*auth.Service, error) {
 // mapGoogleUser turns Google's userinfo response into a user; Email is what the managers check relies on
 func mapGoogleUser(data provider.UserData, _ []byte) token.User {
 	return token.User{
-		ID:    "google_" + token.HashID(sha1.New(), data.Value("username")),
-		Name:  data.Value("nickname"),
-		Email: data.Value("email"),
+		// the avatar store keys files by ID, so it must be unique per user
+		ID:      "google_" + token.HashID(sha1.New(), data.Value("id")),
+		Name:    data.Value("name"),
+		Email:   data.Value("email"),
+		Picture: data.Value("picture"),
 	}
 }

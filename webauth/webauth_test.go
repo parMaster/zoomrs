@@ -46,10 +46,13 @@ func TestNewAuthService_OnlyManagersPass(t *testing.T) {
 }
 
 func TestMapGoogleUser(t *testing.T) {
-	u := mapGoogleUser(provider.UserData{"username": "jdoe", "nickname": "John", "email": "j@example.com"}, nil)
+	u := mapGoogleUser(provider.UserData{
+		"id": "1234", "name": "John", "email": "j@example.com", "picture": "https://example.com/p.jpg",
+	}, nil)
 	assert.Equal(t, "j@example.com", u.Email)
 	assert.Equal(t, "John", u.Name)
-	assert.Equal(t, "google_"+token.HashID(sha1.New(), "jdoe"), u.ID)
+	assert.Equal(t, "https://example.com/p.jpg", u.Picture)
+	assert.Equal(t, "google_"+token.HashID(sha1.New(), "1234"), u.ID)
 }
 
 func TestNewAuthService_RegistersGoogle(t *testing.T) {
