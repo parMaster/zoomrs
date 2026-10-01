@@ -56,7 +56,7 @@
 				<button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
 				</div>
 				<div class="modal-body" id="shareModalBody">
-					<input type="text" class="form-control" id="shareLink" value="" readonly>
+					<input type="text" class="form-control" id="watchUrl" value="" readonly>
 				</div>
 				<div class="modal-footer">
 				<button type="button" id="open" class="btn btn-link">Open</button>
@@ -122,11 +122,11 @@ $(document).ready(function() {
 	$('#list tbody').on('click', '.share', function () {
 		var data = table.row( $(this).parents('tr') ).data();
 
-		$('#shareLink').val(base_url+'/watch/'+data.access_key+'?uuid='+encodeURIComponent(data.uuid));
+		$('#watchUrl').val(base_url+'/watch/'+data.access_key+'?uuid='+encodeURIComponent(data.uuid));
 		$('#shareModal').modal('show');
 		// Copy button copies the link to clipboard
 		$('#copy').click(function() {
-			$('#shareLink').select();
+			$('#watchUrl').select();
 			document.execCommand("copy");
 			// notify user that link has been copied
 			$('#copy').text('Copied!');
@@ -140,7 +140,7 @@ $(document).ready(function() {
 
 	// When the open button is clicked, open the link in a new tab
 	$('#open').click(function() {
-		var url = $('#shareLink').val();
+		var url = $('#watchUrl').val();
 		window.open(url, '_blank');
 	});
 
