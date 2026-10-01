@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -169,6 +170,81 @@ func TestGetToken(t *testing.T) {
 		tok, err := f.client(testClientConfig()).GetToken()
 		assert.Error(t, err)
 		assert.Nil(t, tok)
+	})
+
+	t.Run("concurrent callers authorize once", func(t *testing.T) {
+		f := newFakeZoom(t)
+		f.token = func(w http.ResponseWriter, _ *http.Request) {
+			// slow enough that every caller arrives before the first token is stored
+			time.Sleep(20 * time.Millisecond)
+			writeJSON(t, w, map[string]any{"access_token": "tok", "expires_in": 3600})
+		}
+		z := f.client(testClientConfig())
+
+		start := make(chan struct{})
+		var wg sync.WaitGroup
+		for range 20 {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				<-start
+				tok, err := z.GetToken()
+				if assert.NoError(t, err) {
+					assert.Equal(t, "tok", tok.AccessToken)
+				}
+			}()
+		}
+		close(start)
+		wg.Wait()
+
+		assert.Equal(t, int32(1), f.tokenCalls.Load())
+	})
+
+	t.Run("refresh does not disturb callers using the token", func(t *testing.T) {
+		f := newFakeZoom(t)
+		// under 300 seconds the token is expired on arrival, so every call refreshes
+		f.token = func(w http.ResponseWriter, _ *http.Request) {
+			writeJSON(t, w, map[string]any{"access_token": "tok", "expires_in": 1})
+		}
+		f.recordings = func(w http.ResponseWriter, r *http.Request) {
+			assert.Equal(t, "Bearer tok", r.Header.Get("Authorization"))
+			writeJSON(t, w, model.Recordings{})
+		}
+		z := f.client(testClientConfig())
+
+		var wg sync.WaitGroup
+		for range 20 {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				_, err := z.GetIntervalMeetings(context.Background(), time.Now(), time.Now())
+				assert.NoError(t, err)
+			}()
+		}
+		wg.Wait()
+	})
+
+	t.Run("failed refresh keeps the previous token", func(t *testing.T) {
+		f := newFakeZoom(t)
+		var broken atomic.Bool
+		f.token = func(w http.ResponseWriter, _ *http.Request) {
+			if broken.Load() {
+				_, _ = w.Write([]byte(`{"access_token":"half","expires_in":"soon"}`))
+				return
+			}
+			writeJSON(t, w, map[string]any{"access_token": "tok", "expires_in": 3600})
+		}
+		z := f.client(testClientConfig())
+
+		_, err := z.GetToken()
+		require.NoError(t, err)
+		z.token.ExpiresAt = time.Now().Add(-time.Second)
+		broken.Store(true)
+
+		tok, err := z.GetToken()
+		assert.Error(t, err)
+		assert.Nil(t, tok)
+		assert.Equal(t, "tok", z.token.AccessToken)
 	})
 }
 
@@ -541,5 +617,53 @@ func TestDeleteRecordingsOverCapacity(t *testing.T) {
 		cancel()
 		_, err := f.client(testClientConfig()).DeleteRecordingsOverCapacity(ctx, 15)
 		assert.ErrorContains(t, err, "unable to GetAllMeetingsWithRetry")
+	})
+}
+
+func TestStatusErrors(t *testing.T) {
+	const zoomBody = `{"code":429,"message":"You have reached the maximum per-second rate limit"}`
+	fail := func(body string) http.HandlerFunc {
+		return func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(http.StatusTooManyRequests)
+			_, _ = w.Write([]byte(body))
+		}
+	}
+
+	t.Run("recordings failure carries Zoom's answer and does not blame authorization", func(t *testing.T) {
+		f := newFakeZoom(t)
+		f.recordings = fail(zoomBody + "\n")
+		_, err := f.client(testClientConfig()).GetIntervalMeetings(context.Background(), time.Now(), time.Now())
+		assert.EqualError(t, err, "unable to get recordings, status 429, message: "+zoomBody)
+		assert.NotContains(t, err.Error(), "authorize")
+	})
+
+	t.Run("storage report failure carries Zoom's answer", func(t *testing.T) {
+		f := newFakeZoom(t)
+		f.report = fail(zoomBody)
+		_, err := f.client(testClientConfig()).GetCloudStorageReport("a", "b")
+		assert.EqualError(t, err, "unable to get cloud storage, status 429, message: "+zoomBody)
+	})
+
+	t.Run("delete failure carries Zoom's answer", func(t *testing.T) {
+		f := newFakeZoom(t)
+		f.delete = fail(zoomBody)
+		err := f.client(testClientConfig()).DeleteMeetingRecordings("m1", false)
+		assert.EqualError(t, err, "unable to delete recordings for meeting id: m1, status 429, message: "+zoomBody)
+	})
+
+	t.Run("empty body leaves no dangling message", func(t *testing.T) {
+		f := newFakeZoom(t)
+		f.report = fail("")
+		_, err := f.client(testClientConfig()).GetCloudStorageReport("a", "b")
+		assert.EqualError(t, err, "unable to get cloud storage, status 429")
+	})
+
+	t.Run("oversized body is cut off", func(t *testing.T) {
+		f := newFakeZoom(t)
+		f.report = fail(strings.Repeat("x", 10*maxErrorBody))
+		_, err := f.client(testClientConfig()).GetCloudStorageReport("a", "b")
+		require.Error(t, err)
+		assert.Less(t, len(err.Error()), 2*maxErrorBody)
+		assert.Contains(t, err.Error(), strings.Repeat("x", maxErrorBody))
 	})
 }
