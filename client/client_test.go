@@ -1,8 +1,11 @@
 package client
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
+	"log"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -115,6 +118,14 @@ func TestAuthorize(t *testing.T) {
 		assert.Equal(t, "tok", z.token.AccessToken)
 		// expiry is pulled 5 minutes early so a token is never used right at its deadline
 		assert.WithinDuration(t, time.Now().Add(55*time.Minute), z.token.ExpiresAt, 5*time.Second)
+	})
+
+	t.Run("expiry is wall-clock time, so it still holds after a suspend", func(t *testing.T) {
+		f := newFakeZoom(t)
+		z := f.client(testClientConfig())
+		require.NoError(t, z.Authorize())
+		// a time with a monotonic reading prints it as "m=+..."
+		assert.NotContains(t, z.token.ExpiresAt.String(), "m=")
 	})
 
 	t.Run("non-200 is an error", func(t *testing.T) {
@@ -666,4 +677,237 @@ func TestStatusErrors(t *testing.T) {
 		assert.Less(t, len(err.Error()), 2*maxErrorBody)
 		assert.Contains(t, err.Error(), strings.Repeat("x", maxErrorBody))
 	})
+}
+
+// numberedTokens makes the fake hand out tok1, tok2, ... so a test can tell a new token from a rejected one
+func (f *fakeZoom) numberedTokens() {
+	var n atomic.Int32
+	f.token = func(w http.ResponseWriter, _ *http.Request) {
+		writeJSON(f.t, w, map[string]any{"access_token": fmt.Sprintf("tok%d", n.Add(1)), "expires_in": 3600})
+	}
+}
+
+// rejecting answers 401 to requests carrying the given token and counts every request it sees
+func rejecting(token string, calls *atomic.Int32, h http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		calls.Add(1)
+		if r.Header.Get("Authorization") == "Bearer "+token {
+			w.WriteHeader(http.StatusUnauthorized)
+			_, _ = w.Write([]byte(`{"code":124,"message":"Invalid access token."}`))
+			return
+		}
+		h(w, r)
+	}
+}
+
+func TestUnauthorized(t *testing.T) {
+	ctx := context.Background()
+	now := time.Now()
+
+	t.Run("recordings recover with a new token", func(t *testing.T) {
+		f := newFakeZoom(t)
+		f.numberedTokens()
+		var calls atomic.Int32
+		f.recordings = rejecting("tok1", &calls, func(w http.ResponseWriter, r *http.Request) {
+			assert.Equal(t, "Bearer tok2", r.Header.Get("Authorization"))
+			writeJSON(t, w, model.Recordings{Meetings: []model.Meeting{meeting("m1", now)}})
+		})
+
+		got, err := f.client(testClientConfig()).GetIntervalMeetings(ctx, now, now)
+		require.NoError(t, err)
+		assert.Len(t, got, 1)
+		assert.Equal(t, int32(2), calls.Load())
+		assert.Equal(t, int32(2), f.tokenCalls.Load())
+	})
+
+	t.Run("storage report recovers with a new token", func(t *testing.T) {
+		f := newFakeZoom(t)
+		f.numberedTokens()
+		var calls atomic.Int32
+		f.report = rejecting("tok1", &calls, func(w http.ResponseWriter, r *http.Request) {
+			assert.Equal(t, "Bearer tok2", r.Header.Get("Authorization"))
+			_, _ = w.Write([]byte(`{"from":"a","to":"b","cloud_recording_storage":[]}`))
+		})
+
+		_, err := f.client(testClientConfig()).GetCloudStorageReport("a", "b")
+		require.NoError(t, err)
+		assert.Equal(t, int32(2), calls.Load())
+		assert.Equal(t, int32(2), f.tokenCalls.Load())
+	})
+
+	t.Run("delete recovers with a new token", func(t *testing.T) {
+		f := newFakeZoom(t)
+		f.numberedTokens()
+		var calls atomic.Int32
+		f.delete = rejecting("tok1", &calls, func(w http.ResponseWriter, r *http.Request) {
+			assert.Equal(t, "Bearer tok2", r.Header.Get("Authorization"))
+			assert.Equal(t, "trash", r.URL.Query().Get("action"))
+			w.WriteHeader(http.StatusNoContent)
+		})
+
+		require.NoError(t, f.client(testClientConfig()).DeleteMeetingRecordings("m1", false))
+		assert.Equal(t, int32(2), calls.Load())
+		assert.Equal(t, int32(2), f.tokenCalls.Load())
+	})
+
+	t.Run("a later page recovers without losing earlier pages", func(t *testing.T) {
+		f := newFakeZoom(t)
+		f.numberedTokens()
+		var tok1Calls atomic.Int32
+		f.recordings = func(w http.ResponseWriter, r *http.Request) {
+			page := r.URL.Query().Get("next_page_token")
+			// the token dies between the first and the second page
+			if r.Header.Get("Authorization") == "Bearer tok1" && tok1Calls.Add(1) > 1 {
+				w.WriteHeader(http.StatusUnauthorized)
+				return
+			}
+			if page == "" {
+				writeJSON(t, w, model.Recordings{NextPageToken: "page2", Meetings: []model.Meeting{meeting("m1", now)}})
+				return
+			}
+			assert.Equal(t, "page2", page)
+			assert.Equal(t, "Bearer tok2", r.Header.Get("Authorization"))
+			writeJSON(t, w, model.Recordings{Meetings: []model.Meeting{meeting("m2", now)}})
+		}
+
+		got, err := f.client(testClientConfig()).GetIntervalMeetings(ctx, now, now)
+		require.NoError(t, err)
+		require.Len(t, got, 2)
+		assert.Equal(t, "m1", got[0].UUID)
+		assert.Equal(t, "m2", got[1].UUID)
+		assert.Equal(t, int32(2), f.tokenCalls.Load())
+	})
+
+	t.Run("a second 401 is an error and there is no third attempt", func(t *testing.T) {
+		f := newFakeZoom(t)
+		f.numberedTokens()
+		var calls atomic.Int32
+		f.report = func(w http.ResponseWriter, _ *http.Request) {
+			calls.Add(1)
+			w.WriteHeader(http.StatusUnauthorized)
+		}
+
+		_, err := f.client(testClientConfig()).GetCloudStorageReport("a", "b")
+		assert.EqualError(t, err, "unable to get cloud storage, status 401")
+		assert.Equal(t, int32(2), calls.Load())
+		assert.Equal(t, int32(2), f.tokenCalls.Load())
+	})
+
+	t.Run("a failed refresh is an error that names the call", func(t *testing.T) {
+		f := newFakeZoom(t)
+		var issued atomic.Int32
+		f.token = func(w http.ResponseWriter, _ *http.Request) {
+			if issued.Add(1) > 1 {
+				w.WriteHeader(http.StatusUnauthorized)
+				return
+			}
+			writeJSON(t, w, map[string]any{"access_token": "tok1", "expires_in": 3600})
+		}
+		var calls atomic.Int32
+		f.report = rejecting("tok1", &calls, func(http.ResponseWriter, *http.Request) {})
+
+		_, err := f.client(testClientConfig()).GetCloudStorageReport("a", "b")
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "unable to get cloud storage, status 401")
+		assert.Contains(t, err.Error(), "unable to authorize")
+		assert.Equal(t, int32(1), calls.Load())
+		assert.Equal(t, int32(2), f.tokenCalls.Load())
+	})
+
+	t.Run("concurrent 401s cause one token request", func(t *testing.T) {
+		const callers = 10
+		f := newFakeZoom(t)
+		f.numberedTokens()
+		// hold every tok1 request until all callers have sent theirs, so each one sees the 401
+		var arrived atomic.Int32
+		release := make(chan struct{})
+		f.recordings = func(w http.ResponseWriter, r *http.Request) {
+			if r.Header.Get("Authorization") == "Bearer tok1" {
+				if arrived.Add(1) == callers {
+					close(release)
+				}
+				<-release
+				w.WriteHeader(http.StatusUnauthorized)
+				return
+			}
+			assert.Equal(t, "Bearer tok2", r.Header.Get("Authorization"))
+			writeJSON(t, w, model.Recordings{})
+		}
+		z := f.client(testClientConfig())
+		_, err := z.GetToken()
+		require.NoError(t, err)
+
+		var wg sync.WaitGroup
+		for range callers {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				_, err := z.GetIntervalMeetings(ctx, now, now)
+				assert.NoError(t, err)
+			}()
+		}
+		wg.Wait()
+
+		assert.Equal(t, int32(2), f.tokenCalls.Load())
+	})
+}
+
+func TestRefreshToken(t *testing.T) {
+	t.Run("replaces the rejected token", func(t *testing.T) {
+		f := newFakeZoom(t)
+		f.numberedTokens()
+		z := f.client(testClientConfig())
+		old, err := z.GetToken()
+		require.NoError(t, err)
+
+		got, err := z.RefreshToken(old)
+		require.NoError(t, err)
+		assert.Equal(t, "tok2", got.AccessToken)
+		assert.Equal(t, int32(2), f.tokenCalls.Load())
+	})
+
+	t.Run("returns the current token when someone already replaced it", func(t *testing.T) {
+		f := newFakeZoom(t)
+		f.numberedTokens()
+		z := f.client(testClientConfig())
+		old, err := z.GetToken()
+		require.NoError(t, err)
+		current, err := z.RefreshToken(old)
+		require.NoError(t, err)
+
+		got, err := z.RefreshToken(old)
+		require.NoError(t, err)
+		assert.Same(t, current, got)
+		assert.Equal(t, int32(2), f.tokenCalls.Load())
+	})
+
+	t.Run("failure returns no token", func(t *testing.T) {
+		f := newFakeZoom(t)
+		z := f.client(testClientConfig())
+		old, err := z.GetToken()
+		require.NoError(t, err)
+		f.token = func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusUnauthorized) }
+
+		got, err := z.RefreshToken(old)
+		assert.Error(t, err)
+		assert.Nil(t, got)
+	})
+}
+
+func TestTokenIsNotLogged(t *testing.T) {
+	var buf bytes.Buffer
+	out := log.Writer()
+	log.SetOutput(&buf)
+	t.Cleanup(func() { log.SetOutput(out) })
+
+	f := newFakeZoom(t)
+	f.token = func(w http.ResponseWriter, _ *http.Request) {
+		writeJSON(t, w, map[string]any{"access_token": "very-secret-token", "expires_in": 3600})
+	}
+	f.recordings = func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusInternalServerError) }
+
+	_, err := f.client(testClientConfig()).GetIntervalMeetings(context.Background(), time.Now(), time.Now())
+	require.Error(t, err)
+	assert.NotContains(t, err.Error(), "very-secret-token")
+	assert.NotContains(t, buf.String(), "very-secret-token")
 }

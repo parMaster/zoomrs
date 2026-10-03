@@ -1,14 +1,18 @@
 package repo
 
 import (
+	"bytes"
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
 	"io"
+	"log"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"slices"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -36,7 +40,10 @@ type fakeClient struct {
 	meetings    []model.Meeting
 	meetingsErr error
 	daysAgo     []int
+	token       string // handed out by GetToken; "tok" when empty
 	tokenErr    error
+	refreshErr  error
+	refreshes   atomic.Int32
 	deleteErr   error
 	deletes     []deleteCall
 	onDelete    func()
@@ -55,7 +62,16 @@ func (f *fakeClient) GetToken() (*client.AccessToken, error) {
 	if f.tokenErr != nil {
 		return nil, f.tokenErr
 	}
-	return &client.AccessToken{AccessToken: "tok"}, nil
+	return &client.AccessToken{AccessToken: cmp.Or(f.token, "tok")}, nil
+}
+
+// RefreshToken hands out "tok2", so a server can tell the new token from the rejected "tok"
+func (f *fakeClient) RefreshToken(*client.AccessToken) (*client.AccessToken, error) {
+	f.refreshes.Add(1)
+	if f.refreshErr != nil {
+		return nil, f.refreshErr
+	}
+	return &client.AccessToken{AccessToken: "tok2"}, nil
 }
 
 func (f *fakeClient) DeleteMeetingRecordings(uuid string, del bool) error {
@@ -504,6 +520,118 @@ func TestDownloadRecord(t *testing.T) {
 		rc2.DownloadURL = srv.URL + "/video.mp4"
 		queued2 := queue(t, store, "m2", rc2)
 		assert.ErrorContains(t, r.DownloadRecord(ctx, queued2), "size 8")
+	})
+
+	// rejectingServer answers 401 to the listed tokens and serves the file to any other.
+	// It counts GETs only: the download library probes with a HEAD before each one.
+	rejectingServer := func(t *testing.T, rejected ...string) (*httptest.Server, *atomic.Int32) {
+		t.Helper()
+		var calls atomic.Int32
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.Method == http.MethodGet {
+				calls.Add(1)
+			}
+			if slices.Contains(rejected, r.URL.Query().Get("access_token")) {
+				w.WriteHeader(http.StatusUnauthorized)
+				return
+			}
+			_, _ = w.Write([]byte("videodat"))
+		}))
+		t.Cleanup(srv.Close)
+		return srv, &calls
+	}
+
+	t.Run("401 is retried once with a new token and the record never fails", func(t *testing.T) {
+		r, store, fc, _ := newTestRepo(t)
+		srv, calls := rejectingServer(t, "tok")
+		rc := rec("r1", "m1", model.SharedScreenWithGalleryView, now, "", 8)
+		rc.DownloadURL = srv.URL + "/video.mp4"
+		queued := queue(t, store, "m1", rc)
+		var statuses []model.RecordStatus
+		r.store = &stubStore{Storer: store, updateRecord: func(ctx context.Context, id string, s model.RecordStatus, path string) error {
+			statuses = append(statuses, s)
+			return store.UpdateRecord(ctx, id, s, path)
+		}}
+
+		require.NoError(t, r.DownloadRecord(ctx, queued))
+
+		assert.Equal(t, []model.RecordStatus{model.StatusDownloading, model.StatusDownloaded}, statuses)
+		assert.Equal(t, model.StatusDownloaded, recordStatus(t, store, "m1", "r1").Status)
+		assert.Equal(t, int32(2), calls.Load())
+		assert.Equal(t, int32(1), fc.refreshes.Load())
+	})
+
+	t.Run("a second 401 marks the record failed and there is no third attempt", func(t *testing.T) {
+		r, store, fc, _ := newTestRepo(t)
+		srv, calls := rejectingServer(t, "tok", "tok2")
+		rc := rec("r1", "m1", model.SharedScreenWithGalleryView, now, "", 8)
+		rc.DownloadURL = srv.URL + "/video.mp4"
+		queued := queue(t, store, "m1", rc)
+
+		err := r.DownloadRecord(ctx, queued)
+		assert.ErrorContains(t, err, "401")
+		assert.NotContains(t, err.Error(), "tok2")
+		assert.Equal(t, model.StatusFailed, recordStatus(t, store, "m1", "r1").Status)
+		assert.Equal(t, int32(2), calls.Load())
+		assert.Equal(t, int32(1), fc.refreshes.Load())
+	})
+
+	t.Run("a failed token refresh marks the record failed", func(t *testing.T) {
+		r, store, fc, _ := newTestRepo(t)
+		fc.refreshErr = errBoom
+		srv, calls := rejectingServer(t, "tok")
+		rc := rec("r1", "m1", model.SharedScreenWithGalleryView, now, "", 8)
+		rc.DownloadURL = srv.URL + "/video.mp4"
+		queued := queue(t, store, "m1", rc)
+
+		assert.ErrorIs(t, r.DownloadRecord(ctx, queued), errBoom)
+		assert.Equal(t, model.StatusFailed, recordStatus(t, store, "m1", "r1").Status)
+		assert.Equal(t, int32(1), calls.Load())
+	})
+
+	t.Run("errors never carry the token", func(t *testing.T) {
+		const secret = "very-secret-token"
+		closed := httptest.NewServer(http.NotFoundHandler())
+		closed.Close()
+		serve := func(status int, body string) string {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.WriteHeader(status)
+				_, _ = w.Write([]byte(body))
+			}))
+			t.Cleanup(srv.Close)
+			return srv.URL
+		}
+		cases := []struct {
+			name string
+			url  string
+			size model.FileSize
+		}{
+			{"transport error", closed.URL + "/video.mp4", 8},
+			{"bad status", serve(http.StatusNotFound, "") + "/video.mp4", 8},
+			{"2xx other than 200", serve(http.StatusNonAuthoritativeInfo, "videodat") + "/video.mp4", 8},
+			{"wrong size", serve(http.StatusOK, "videodat") + "/video.mp4", 99},
+			{"wrong extension", serve(http.StatusOK, "videodat") + "/video.m4a", 8},
+		}
+		for _, tc := range cases {
+			t.Run(tc.name, func(t *testing.T) {
+				var buf bytes.Buffer
+				out := log.Writer()
+				log.SetOutput(&buf)
+				t.Cleanup(func() { log.SetOutput(out) })
+
+				r, store, fc, _ := newTestRepo(t)
+				fc.token = secret
+				rc := rec("r1", "m1", model.SharedScreenWithGalleryView, now, "", tc.size)
+				rc.DownloadURL = tc.url
+				queued := queue(t, store, "m1", rc)
+
+				err := r.DownloadRecord(ctx, queued)
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), tc.url)
+				assert.NotContains(t, err.Error(), secret)
+				assert.NotContains(t, buf.String(), secret)
+			})
+		}
 	})
 }
 
