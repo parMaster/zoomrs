@@ -24,5 +24,7 @@ type Storer interface {
 	UpdateRecord(ctx context.Context, Id string, status model.RecordStatus, path string) error
 	GetQueuedRecord(ctx context.Context) (*model.Record, error)
 	ResetFailedRecords(ctx context.Context) error
+	GetQueuedRecordOf(ctx context.Context, meetingUUIDs []string) (*model.Record, error)
+	ResetFailedRecordsOf(ctx context.Context, meetingUUIDs []string) error
 	Stats(ctx context.Context) (map[model.RecordStatus]any, error)
 }

@@ -274,7 +274,7 @@ Run it like this:
 ./zoomrs-cli --dbg --cmd sync --days 1
 ```
 
-	`--days` parameter used with the value of `1` to sync all the yesterday recordings (1 day before today). This is designed this way to run it as a cron job. Cron job line example:
+	`--days` parameter used with the value of `1` to sync all the yesterday recordings (1 day before today). The download is limited to the meetings Zoom lists for that day: queued, failed and unfinished records of other days are left as they are. Records of that day that fail are put back in the queue and retried until they download or 12 hours pass. This is designed this way to run it as a cron job. Cron job line example:
 ```sh
 00 03 * * * cd $HOME/go/src/zoomrs/dist && ./zoomrs-cli --cmd sync --days 1 --config ../config/config_cli.yml >> /var/log/zoomrs.cron.log 2>&1
 ```

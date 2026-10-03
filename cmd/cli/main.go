@@ -23,11 +23,13 @@ type Commander struct {
 	cfg    *config.Parameters
 	client *client.ZoomClient
 	store  storage.Storer
+	// pause before another attempt after a failed listing, save or download
+	retryWait time.Duration
 }
 
 func NewCommander(conf *config.Parameters) *Commander {
 	client := client.NewZoomClient(conf.Client)
-	return &Commander{cfg: conf, client: client}
+	return &Commander{cfg: conf, client: client, retryWait: 30 * time.Second}
 }
 
 func (s *Commander) Run(ctx context.Context, opts Options) error {
@@ -80,6 +82,9 @@ func (s *Commander) Run(ctx context.Context, opts Options) error {
 			log.Printf("[INFO] No sync types configured. Sync job will not run")
 			return fmt.Errorf("sync job will not run: no sync types configured")
 		}
+		// the download below is limited to these meetings, so a run for one day
+		// leaves the backlog and the failures of other days alone
+		var dayMeetings []string
 		for {
 			select {
 			case <-ctx.Done():
@@ -89,11 +94,11 @@ func (s *Commander) Run(ctx context.Context, opts Options) error {
 
 			meetings, err := s.client.GetMeetings(ctx, opts.Days)
 			if err != nil {
-				log.Printf("[ERROR] failed to get meetings, %v, retrying in 30 sec", err)
+				log.Printf("[ERROR] failed to get meetings, %v, retrying in %v", err, s.retryWait)
 				select {
 				case <-ctx.Done():
 					return ctx.Err()
-				case <-time.After(30 * time.Second):
+				case <-time.After(s.retryWait):
 					continue
 				}
 			}
@@ -101,13 +106,16 @@ func (s *Commander) Run(ctx context.Context, opts Options) error {
 
 			err = r.SyncMeetings(ctx, &meetings)
 			if err != nil {
-				log.Printf("[ERROR] failed to sync meetings, %v, retrying in 30 sec", err)
+				log.Printf("[ERROR] failed to sync meetings, %v, retrying in %v", err, s.retryWait)
 				select {
 				case <-ctx.Done():
 					return ctx.Err()
-				case <-time.After(30 * time.Second):
+				case <-time.After(s.retryWait):
 					continue
 				}
+			}
+			for _, m := range meetings {
+				dayMeetings = append(dayMeetings, m.UUID)
 			}
 			break
 		}
@@ -121,7 +129,7 @@ func (s *Commander) Run(ctx context.Context, opts Options) error {
 				return fmt.Errorf("downloading terminated early: %w", syncTimelimitCtx.Err())
 			default:
 			}
-			err = r.DownloadOnce(ctx)
+			err := r.DownloadOnceOf(ctx, dayMeetings)
 			if err == repo.ErrNoQueuedRecords {
 				if err == lastError {
 					log.Printf("[DEBUG] no queued records, exiting")
@@ -131,12 +139,12 @@ func (s *Commander) Run(ctx context.Context, opts Options) error {
 				continue
 			}
 			if err != nil {
-				log.Printf("[ERROR] failed to download meetings, %v, retrying in 30 sec", err)
+				log.Printf("[ERROR] failed to download meetings, %v, retrying in %v", err, s.retryWait)
 				lastError = err
 				select {
 				case <-syncTimelimitCtx.Done():
 					return fmt.Errorf("downloading terminated in the process: %w", syncTimelimitCtx.Err())
-				case <-time.After(30 * time.Second):
+				case <-time.After(s.retryWait):
 					continue
 				}
 			}

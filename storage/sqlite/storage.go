@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"log"
+	"strings"
 	"time"
 
 	_ "github.com/mattn/go-sqlite3"
@@ -263,11 +264,47 @@ func (s *SQLiteStorage) ResetFailedRecords(ctx context.Context) error {
 	return err
 }
 
+// ResetFailedRecordsOf resets failed records of the given meetings to queued.
+// An empty list resets nothing.
+func (s *SQLiteStorage) ResetFailedRecordsOf(ctx context.Context, meetingUUIDs []string) error {
+	if len(meetingUUIDs) == 0 {
+		return nil
+	}
+	in, args := meetingIdIn(meetingUUIDs)
+	q := "UPDATE `records` SET status = 'queued' WHERE status IN ('failed', 'downloading') AND " + in
+	_, err := s.DB.ExecContext(ctx, q, args...)
+	return err
+}
+
 // GetQueuedRecord returns a queued record from the database
 func (s *SQLiteStorage) GetQueuedRecord(ctx context.Context) (*model.Record, error) {
 	q := "SELECT * FROM `records` WHERE status = $1 ORDER BY startTime, id LIMIT 1"
+	return s.queuedRecord(ctx, q, model.StatusQueued)
+}
 
-	row := s.DB.QueryRowContext(ctx, q, model.StatusQueued)
+// GetQueuedRecordOf returns a queued record of one of the given meetings.
+// An empty list has no queued records.
+func (s *SQLiteStorage) GetQueuedRecordOf(ctx context.Context, meetingUUIDs []string) (*model.Record, error) {
+	if len(meetingUUIDs) == 0 {
+		return nil, storage.ErrNoRows
+	}
+	in, args := meetingIdIn(meetingUUIDs)
+	q := "SELECT * FROM `records` WHERE status = 'queued' AND " + in + " ORDER BY startTime, id LIMIT 1"
+	return s.queuedRecord(ctx, q, args...)
+}
+
+// meetingIdIn builds a condition matching records of the given meetings. UUIDs can hold
+// '/', '+' and '=', so each one is a bound argument and only placeholders reach the query text.
+func meetingIdIn(meetingUUIDs []string) (cond string, args []any) {
+	args = make([]any, len(meetingUUIDs))
+	for i, uuid := range meetingUUIDs {
+		args[i] = uuid
+	}
+	return "meetingId IN (?" + strings.Repeat(", ?", len(meetingUUIDs)-1) + ")", args
+}
+
+func (s *SQLiteStorage) queuedRecord(ctx context.Context, q string, args ...any) (*model.Record, error) {
+	row := s.DB.QueryRowContext(ctx, q, args...)
 	record := model.Record{}
 	err := row.Scan(
 		&record.Id,
