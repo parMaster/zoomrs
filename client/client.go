@@ -113,7 +113,9 @@ func (z *ZoomClient) authorize() error {
 	if err != nil {
 		return err
 	}
-	token.ExpiresAt = time.Now().Add(dur).Add(-5 * time.Minute)
+	// Round(0) keeps wall-clock time only: the monotonic clock stops while the machine is
+	// suspended, and a token would look fresh after wake-up
+	token.ExpiresAt = time.Now().Add(dur).Add(-5 * time.Minute).Round(0)
 	z.token = token
 
 	return nil

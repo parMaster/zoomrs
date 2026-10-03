@@ -120,6 +120,14 @@ func TestAuthorize(t *testing.T) {
 		assert.WithinDuration(t, time.Now().Add(55*time.Minute), z.token.ExpiresAt, 5*time.Second)
 	})
 
+	t.Run("expiry is wall-clock time, so it still holds after a suspend", func(t *testing.T) {
+		f := newFakeZoom(t)
+		z := f.client(testClientConfig())
+		require.NoError(t, z.Authorize())
+		// a time with a monotonic reading prints it as "m=+..."
+		assert.NotContains(t, z.token.ExpiresAt.String(), "m=")
+	})
+
 	t.Run("non-200 is an error", func(t *testing.T) {
 		f := newFakeZoom(t)
 		f.token = func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusUnauthorized) }

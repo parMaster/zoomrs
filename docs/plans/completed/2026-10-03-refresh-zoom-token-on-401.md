@@ -117,6 +117,9 @@ after:   call ──401──▶ drop stored token ──▶ new token ──▶
       token fetch asserts the same; `grep -n 'token = ' client/client.go` finds nothing.
 - [x] Non-401 behaviour is unchanged — proof: the existing `client` and `repo` tests pass
       without edits to their assertions.
+- [x] ➕ A token that expired while the machine was suspended is refreshed before use
+      (GitHub issue #18) — proof: a test asserting the stored expiry carries no monotonic
+      clock reading, so the expiry check compares wall-clock time.
 
 ## Wrap-up
 
