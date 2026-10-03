@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"net/url"
@@ -27,27 +28,57 @@ type AccessToken struct {
 	ExpiresAt   time.Time `json:"-"`
 }
 
+const (
+	defaultAuthURL = "https://zoom.us"
+	defaultAPIURL  = "https://api.zoom.us/v2"
+)
+
 type ZoomClient struct {
 	cfg    *config.Client
 	client http.Client
-	token  *AccessToken
+	// mx guards token: the service's jobs share one client
+	mx      sync.Mutex
+	token   *AccessToken
+	authURL string
+	apiURL  string
 }
 
-func NewZoomClient(cfg config.Client) *ZoomClient {
-	client := http.Client{}
+// Option configures a ZoomClient
+type Option func(*ZoomClient)
 
-	return &ZoomClient{cfg: &cfg, client: client}
+// WithBaseURLs overrides the Zoom OAuth and API base URLs, e.g. to point the client at a test server
+func WithBaseURLs(authURL, apiURL string) Option {
+	return func(z *ZoomClient) {
+		z.authURL = authURL
+		z.apiURL = apiURL
+	}
+}
+
+func NewZoomClient(cfg config.Client, opts ...Option) *ZoomClient {
+	z := &ZoomClient{cfg: &cfg, client: http.Client{}, authURL: defaultAuthURL, apiURL: defaultAPIURL}
+	for _, opt := range opts {
+		opt(z)
+	}
+	return z
 }
 
 // Authorize - get access token
 func (z *ZoomClient) Authorize() error {
+	z.mx.Lock()
+	defer z.mx.Unlock()
+
+	return z.authorize()
+}
+
+// authorize requests a new token and stores it; the caller holds z.mx
+func (z *ZoomClient) authorize() error {
 	bearer := b64.StdEncoding.EncodeToString([]byte(z.cfg.Id + ":" + z.cfg.Secret))
 
 	params := url.Values{}
 	params.Add(`grant_type`, `account_credentials`)
 	params.Add(`account_id`, z.cfg.AccountId)
 
-	req, err := http.NewRequest(http.MethodPost, "https://zoom.us/oauth/token",
+	req, err := http.NewRequest(http.MethodPost, z.authURL+"/oauth/token",
 		strings.NewReader(params.Encode()))
 	if err != nil {
 		return err
@@ -72,34 +103,48 @@ func (z *ZoomClient) Authorize() error {
 			z.cfg.AccountId, z.cfg.Id, resp.StatusCode)
 	}
 
-	if err := json.NewDecoder(resp.Body).Decode(&z.token); err != nil {
+	// a fresh value, so callers still holding the previous token are not disturbed
+	token := &AccessToken{}
+	if err := json.NewDecoder(resp.Body).Decode(token); err != nil {
 		return err
 	}
 
-	log.Printf("[DEBUG] token = %v", z.token.AccessToken)
+	log.Printf("[DEBUG] token = %v", token.AccessToken)
 
-	dur, err := time.ParseDuration(fmt.Sprintf("%ds", z.token.ExpiresIn))
+	dur, err := time.ParseDuration(fmt.Sprintf("%ds", token.ExpiresIn))
 	if err != nil {
 		return err
 	}
-	z.token.ExpiresAt = time.Now().Add(dur).Add(-5 * time.Minute)
+	token.ExpiresAt = time.Now().Add(dur).Add(-5 * time.Minute)
+	z.token = token
 
 	return nil
 }
 
 // GetToken - get token, if token is expired, re-authorize
 func (z *ZoomClient) GetToken() (*AccessToken, error) {
-	var mx sync.Mutex
-
-	mx.Lock()
-	defer mx.Unlock()
+	z.mx.Lock()
+	defer z.mx.Unlock()
 
 	if z.token == nil || z.token.ExpiresAt.Before(time.Now()) {
-		if err := z.Authorize(); err != nil {
+		if err := z.authorize(); err != nil {
 			return nil, err
 		}
 	}
 	return z.token, nil
+}
+
+// maxErrorBody caps how much of a failed response goes into the error: it is logged on every retry
+const maxErrorBody = 1024
+
+// statusError describes an unexpected response: what failed, the status and what Zoom answered
+func statusError(what string, resp *http.Response) error {
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, maxErrorBody))
+	msg := strings.TrimSpace(string(body))
+	if msg == "" {
+		return fmt.Errorf("%s, status %d", what, resp.StatusCode)
+	}
+	return fmt.Errorf("%s, status %d, message: %s", what, resp.StatusCode, msg)
 }
 
 // GetMeetings - get meetings for a given day (daysAgo = 0 for today, 1 for yestarday, etc.)
@@ -114,7 +159,7 @@ func (z *ZoomClient) GetMeetings(ctx context.Context, daysAgo int) ([]model.Meet
 // GetIntervalMeetings - get meetings for a from-to interval
 // Medium rate limit API
 func (z *ZoomClient) GetIntervalMeetings(ctx context.Context, from, to time.Time) ([]model.Meeting, error) {
-	_, err := z.GetToken()
+	token, err := z.GetToken()
 	if err != nil {
 		return nil, errors.Join(fmt.Errorf("unable to get token"), err)
 	}
@@ -125,12 +170,12 @@ func (z *ZoomClient) GetIntervalMeetings(ctx context.Context, from, to time.Time
 	params.Add(`to`, to.Format("2006-01-02"))
 	log.Printf("[DEBUG] initial params = %s", params.Encode())
 	req, err := http.NewRequest(http.MethodGet,
-		"https://api.zoom.us/v2/users/me/recordings?"+params.Encode(), nil)
+		z.apiURL+"/users/me/recordings?"+params.Encode(), nil)
 	if err != nil {
 		return nil, err
 	}
 
-	req.Header.Add(`Authorization`, fmt.Sprintf("Bearer %s", z.token.AccessToken))
+	req.Header.Add(`Authorization`, fmt.Sprintf("Bearer %s", token.AccessToken))
 	req.Header.Add(`Host`, "zoom.us")
 	req.Header.Add(`Content-Type`, "application/json")
 
@@ -150,8 +195,7 @@ func (z *ZoomClient) GetIntervalMeetings(ctx context.Context, from, to time.Time
 		}()
 
 		if resp.StatusCode != http.StatusOK {
-			return nil, fmt.Errorf(`unable to authorize with account id: %s and client id: %s,
-			status %d, message: %s`, z.cfg.AccountId, z.cfg.Id, resp.StatusCode, resp.Body)
+			return nil, statusError("unable to get recordings", resp)
 		}
 
 		recordings := &model.Recordings{}
@@ -237,7 +281,7 @@ func (z *ZoomClient) GetAllMeetingsWithRetry(ctx context.Context) ([]model.Meeti
 // - to string - end date in format yyyy-mm-dd
 // HEAVY rate limit API
 func (z *ZoomClient) GetCloudStorageReport(from, to string) (*model.CloudRecordingReport, error) {
-	_, err := z.GetToken()
+	token, err := z.GetToken()
 	if err != nil {
 		return nil, errors.Join(fmt.Errorf("unable to get token"), err)
 	}
@@ -246,13 +290,13 @@ func (z *ZoomClient) GetCloudStorageReport(from, to string) (*model.CloudRecordi
 	params.Add(`from`, from)
 	params.Add(`to`, to)
 	log.Printf("[DEBUG] initial params = %s", params.Encode())
-	req, err := http.NewRequest(http.MethodGet, "https://api.zoom.us/v2/report/cloud_recording?"+
+	req, err := http.NewRequest(http.MethodGet, z.apiURL+"/report/cloud_recording?"+
 		params.Encode(), nil)
 	if err != nil {
 		return nil, err
 	}
 
-	req.Header.Add(`Authorization`, fmt.Sprintf("Bearer %s", z.token.AccessToken))
+	req.Header.Add(`Authorization`, fmt.Sprintf("Bearer %s", token.AccessToken))
 	req.Header.Add(`Host`, "zoom.us")
 	req.Header.Add(`Content-Type`, "application/json")
 
@@ -267,8 +311,7 @@ func (z *ZoomClient) GetCloudStorageReport(from, to string) (*model.CloudRecordi
 	}()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("unable to get cloud storage, status %d, message: %s",
-			resp.StatusCode, resp.Body)
+		return nil, statusError("unable to get cloud storage", resp)
 	}
 
 	report := &model.CloudRecordingReport{}
@@ -291,7 +334,7 @@ func (z *ZoomClient) DeleteMeetingRecordings(meetingId string, delete bool) erro
 		return errors.New("both delete_downloaded and trash_downloaded are false")
 	}
 
-	_, err := z.GetToken()
+	token, err := z.GetToken()
 	if err != nil {
 		return errors.Join(fmt.Errorf("unable to get token"), err)
 	}
@@ -306,7 +349,7 @@ func (z *ZoomClient) DeleteMeetingRecordings(meetingId string, delete bool) erro
 	// https://developers.zoom.us/docs/meeting-sdk/apis/#operation/recordingDelete
 	// If a UUID starts with "/" or contains "//" (example: "/ajXp112QmuoKj4854875=="),
 	// you must double encode the UUID before making an API request.
-	q := fmt.Sprintf("https://api.zoom.us/v2/meetings/%s/recordings?%s",
+	q := fmt.Sprintf("%s/meetings/%s/recordings?%s", z.apiURL,
 		url.QueryEscape(url.QueryEscape(meetingId)), params.Encode())
 	log.Printf("[DEBUG] deleting with url = %s, params = %s", q, params.Encode())
 	req, err := http.NewRequest(http.MethodDelete, q, nil)
@@ -314,7 +357,7 @@ func (z *ZoomClient) DeleteMeetingRecordings(meetingId string, delete bool) erro
 		return err
 	}
 
-	req.Header.Add(`Authorization`, fmt.Sprintf("Bearer %s", z.token.AccessToken))
+	req.Header.Add(`Authorization`, fmt.Sprintf("Bearer %s", token.AccessToken))
 	req.Header.Add(`Host`, "zoom.us")
 	req.Header.Add(`Content-Type`, "application/json")
 
@@ -330,8 +373,7 @@ func (z *ZoomClient) DeleteMeetingRecordings(meetingId string, delete bool) erro
 
 	// 404 StatusNotFound happens when meeting is already deleted or trashed, so ignore the error
 	if resp.StatusCode != http.StatusNoContent && resp.StatusCode != http.StatusNotFound {
-		return fmt.Errorf("unable to delete recordings for meeting id: %s, status %d, message: %s",
-			meetingId, resp.StatusCode, resp.Body)
+		return statusError("unable to delete recordings for meeting id: "+meetingId, resp)
 	}
 
 	return nil

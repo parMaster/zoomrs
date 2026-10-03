@@ -62,10 +62,10 @@ See `config/config_example.yml` for example configuration file, available option
 4. To stop the service press `Ctrl+C` (or send `SIGINT`, `SIGTERM` signal to the process)
 
 ### Systemd service
-1. Repeat steps 1 and 2 from the previous section
-2. Run `make deploy` to build the binary and copy everything where it belongs (see `Makefile` for details), enable and run the service
+1. Clone the repository and put the configuration at `/etc/zoomrs/config.yml` (deploy never copies it from the repo)
+2. Run `make deploy` from the `deploy/` folder to build the binary and copy everything where it belongs (see `deploy/Makefile` for details), enable and run the service
 	```sh
-	make deploy
+	cd deploy && make deploy
 	```
 3. Run `make status` to check the status of the service
 
@@ -73,7 +73,7 @@ See `config/config_example.yml` for example configuration file, available option
 	make status
 	```
 
-Log files are located at `/var/log/zoomrs.log` and `/var/log/zoomrs.err` by default.
+Log files are located at `/var/log/zoomrs.log` and `/var/log/zoomrs.err` by default. The unit is sandboxed and can only write to `/data`, see [deploy/README.md](deploy/README.md).
 
 ### Docker container
 1. Clone the repository from GitHub
@@ -144,6 +144,8 @@ status can be:
 
 `stats` section contains number of recordings and their total size in GB and MB grouped by status
 
+`last_downloaded` is the start time of the latest meeting that has a downloaded video. It is left out until the first video is downloaded (a fresh install, or only audio so far) - the rest of the response is still returned.
+
 `cloud` section contains Zoom cloud storage usage stats. `date` is the last time the stats were updated (it is updated every 24 hours, so if you see the date is not today, it means the stats dodn't change since then), `free_usage` is the amount of free storage, `plan_usage` is the amount of storage available for the current plan, `usage` is the amount of storage used by recordings, `usage_percent` is the percentage of used storage.
 
 `storage` section contains the stats of the local storage. `free` is the amount of free storage, `total` is the total amount of storage, `usage_percent` is the percentage of used storage, `used` is the amount of used storage.
@@ -184,7 +186,7 @@ Auth required. Runs a consistency check of the repository (see `check` cli tool 
 ```
 
 #### GET `/stats[/<K|M|G>]`
-Auth required. Returns the total size of the recordings grouped by date. Optional parameter `K`, `M` or `G` can be used to specify the size in KB, MB or GB respectively. If no parameter is specified, the size is returned in bytes. Example response:
+Auth required. Returns the total size of the recordings grouped by date. Optional parameter `K`, `M` or `G` can be used to specify the size in KB, MB or GB respectively. If no parameter is specified, the size is returned in bytes. When nothing is downloaded yet, the response is an empty object `{}`. Example response:
 ```json
 {
 	"2023-03-20":31,
@@ -221,6 +223,7 @@ Response when some meetings are not loaded:
 	"result":"pending"
 }
 ```
+A meeting counts as loaded only when every record is `downloaded` and its file is on disk with the expected size. A file that is missing or can't be read gives `pending`, so the caller never deletes a recording from Zoom that this instance can't show a copy of.
 
 ## CLI tool
 Zoomrs comes with a CLI tool to trash/delete recordings from Zoom Cloud. It is useful when running miltiple servers and you want to delete recordings from Zoom Cloud only after all servers have downloaded them. CLI tool is located at `cmd/cli/main.go`. Run `make` to build it and put to `dist/zoomrs-cli`.
@@ -300,14 +303,16 @@ sleep 1s && date && scp -r server.local:/data/`date --date="yesterday" +%Y-%m-%d
 
 > [!NOTE]
 > Database backup
-> Backup database file regularly to prevent data loss. See example shell script at `dist/backup_db.sh`. It can be run as a cron job like this:
+> Backup database file regularly to prevent data loss. See example shell script at `deploy/backup_db.sh`. It can be run as a cron job like this:
 
 ```sh
-0 10 * * * sh $HOME/go/src/zoomrs/backup_db.sh
+0 10 * * * sh $HOME/go/src/zoomrs/deploy/backup_db.sh
 ```
 
 ## Contributing
 Pull requests are welcome. For major changes, please open an issue first to discuss what you would like to change. Check the existing issues to see if your problem is already being discussed or if you're willing to help with one of them. Tests are highly appreciated.
+
+`make test` runs offline against fake Zoom servers and temp directories; `make lint` runs the pinned golangci-lint. Tests against the real Zoom API are behind a build tag and read credentials from `config/config_cli.yml`: `go test -tags integration ./client`. Careful: they call the real delete endpoint.
 
 ## License
 [GNU GPLv3](https://choosealicense.com/licenses/gpl-3.0/) © [Dmytro Borshchanenko](https://github.com/parMaster) 2023

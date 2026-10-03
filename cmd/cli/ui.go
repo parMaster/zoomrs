@@ -23,7 +23,7 @@ func (s *Commander) ShowUI() {
 
 	m, err := s.client.GetAllMeetings(ctx)
 	if err != nil {
-		log.Printf("[ERROR] GetIntervalMeetings: %e", err)
+		log.Printf("[ERROR] GetIntervalMeetings: %v", err)
 		os.Exit(1)
 	}
 	meetings = append(meetings, m...)

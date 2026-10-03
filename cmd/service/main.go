@@ -39,7 +39,7 @@ func NewServer(conf *config.Parameters) *Server {
 	client := client.NewZoomClient(conf.Client)
 	authService, err := webauth.NewAuthService(conf.Server)
 	if err != nil {
-		log.Fatalf("[ERROR] failed to init auth service: %e", err)
+		log.Fatalf("[ERROR] failed to init auth service: %v", err)
 	}
 	cache := mcache.NewCache[any]()
 
@@ -52,7 +52,7 @@ func LoadStorage(ctx context.Context, cfg config.Storage, s *storage.Storer) err
 	case "sqlite":
 		*s, err = sqlite.NewStorage(ctx, cfg.Path)
 		if err != nil {
-			return fmt.Errorf("failed to init SQLite storage: %e", err)
+			return fmt.Errorf("failed to init SQLite storage: %w", err)
 		}
 	case "":
 		return errors.New("storage is not configured")
@@ -66,13 +66,17 @@ func (s *Server) Run(ctx context.Context) {
 
 	err := LoadStorage(ctx, s.cfg.Storage, &s.store)
 	if err != nil {
-		log.Fatalf("[ERROR] failed to init storage: %e", err)
+		log.Fatalf("[ERROR] failed to init storage: %v", err)
 	}
 
 	s.repo = repo.NewRepository(s.store, s.client, s.cfg)
 
 	log.Printf("[INFO] starting server at %s", s.cfg.Server.Listen)
-	go s.startServer(ctx)
+	served := make(chan struct{})
+	go func() {
+		defer close(served)
+		s.startServer(ctx)
+	}()
 
 	if s.cfg.Server.SyncJob {
 		log.Printf("[INFO] starting sync job")
@@ -84,28 +88,51 @@ func (s *Server) Run(ctx context.Context) {
 	}
 
 	<-ctx.Done()
+	// the process exits when Run returns, so open requests need this wait to finish
+	<-served
 }
 
+// drainTimeout leaves room inside Docker's default 10s between SIGTERM and SIGKILL
+const drainTimeout = 5 * time.Second
+
 func (s *Server) startServer(ctx context.Context) {
+	serveHTTP(ctx, s.cfg.Server.Listen, s.router(ctx), drainTimeout)
+}
+
+// serveHTTP answers requests on addr until ctx is done, then gives open requests
+// up to drain to finish. It returns once the server is fully stopped.
+func serveHTTP(ctx context.Context, addr string, handler http.Handler, drain time.Duration) {
 	httpServer := &http.Server{
-		Addr:              s.cfg.Server.Listen,
-		Handler:           s.router(ctx),
+		Addr:              addr,
+		Handler:           handler,
 		ReadHeaderTimeout: time.Second,
 		ReadTimeout:       time.Second,
 		WriteTimeout:      30 * time.Second,
 		IdleTimeout:       time.Second,
 	}
 
-	if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-		log.Printf("[ERROR] http server: %v", err)
-	}
+	stopped := make(chan struct{})
+	go func() {
+		defer close(stopped)
+		if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Printf("[ERROR] http server: %v", err)
+		}
+	}()
 
 	<-ctx.Done()
 	log.Printf("[INFO] Terminating http server")
 
-	if err := httpServer.Shutdown(ctx); err != nil {
+	// ctx is already canceled here; Shutdown with it would not wait for open requests
+	drainCtx, cancel := context.WithTimeout(context.Background(), drain)
+	defer cancel()
+	if err := httpServer.Shutdown(drainCtx); err != nil {
 		log.Printf("[ERROR] shutdown http server: %v", err)
+		// a timed out Shutdown leaves the stuck connections open
+		if err := httpServer.Close(); err != nil {
+			log.Printf("[ERROR] close http server: %v", err)
+		}
 	}
+	<-stopped
 }
 
 type Options struct {

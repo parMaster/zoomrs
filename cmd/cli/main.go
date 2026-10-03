@@ -155,7 +155,7 @@ func LoadStorage(ctx context.Context, cfg config.Storage, s *storage.Storer) err
 	case "sqlite":
 		*s, err = sqlite.NewStorage(ctx, cfg.Path)
 		if err != nil {
-			return fmt.Errorf("failed to init SQLite storage: %e", err)
+			return fmt.Errorf("failed to init SQLite storage: %w", err)
 		}
 	case "":
 		return errors.New("storage is not configured")

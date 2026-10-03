@@ -135,7 +135,6 @@ func (s *Server) statusHandler(ctx context.Context) func(rw http.ResponseWriter,
 			"stats":  stats,
 		}
 
-		var lastDownloadedMeeting model.Meeting
 		cachedLast, err := s.cache.Get("lastDownloadedMeeting")
 		if err != nil {
 			log.Printf("[DEBUG] miss")
@@ -146,15 +145,17 @@ func (s *Server) statusHandler(ctx context.Context) func(rw http.ResponseWriter,
 				rw.WriteHeader(http.StatusInternalServerError)
 				return
 			}
-			lastDownloadedMeeting = meetingsLoaded[0]
-			if !s.cache.Set("lastDownloadedMeeting", lastDownloadedMeeting, 10*time.Minute) {
-				log.Printf("[ERROR] failed to cache lastDownloadedMeeting")
+			// no downloaded video yet: not cached, so the first one shows up on the next request
+			if len(meetingsLoaded) > 0 {
+				resp["last_downloaded"] = meetingsLoaded[0].DateTime
+				if !s.cache.Set("lastDownloadedMeeting", meetingsLoaded[0], 10*time.Minute) {
+					log.Printf("[ERROR] failed to cache lastDownloadedMeeting")
+				}
 			}
 		} else {
 			log.Printf("[DEBUG] hit")
-			lastDownloadedMeeting = cachedLast.(model.Meeting)
+			resp["last_downloaded"] = cachedLast.(model.Meeting).DateTime
 		}
-		resp["last_downloaded"] = lastDownloadedMeeting.DateTime
 
 		var cloudStorageReport *model.CloudRecordingReport
 		cachedCloud, err := s.cache.Get("cloudStorageReport")
@@ -414,13 +415,19 @@ func (s *Server) meetingsLoadedHandler(ctx context.Context) func(rw http.Respons
 					return
 				}
 
-				if info, err := os.Stat(rec.FilePath); err == nil {
-					if info.Size() != int64(rec.FileSize) {
-						resp["result"] = "pending"
-						log.Printf("[DEBUG] Pending caused by filesize %s - %d", rec.Id, rec.FileSize)
-						writeResp()
-						return
-					}
+				// a file that can't be read is not a confirmed copy, and the caller deletes the original on "ok"
+				info, err := os.Stat(rec.FilePath)
+				if err != nil {
+					resp["result"] = "pending"
+					log.Printf("[DEBUG] Pending caused by file %s - %v", rec.Id, err)
+					writeResp()
+					return
+				}
+				if info.Size() != int64(rec.FileSize) {
+					resp["result"] = "pending"
+					log.Printf("[DEBUG] Pending caused by filesize %s - %d", rec.Id, rec.FileSize)
+					writeResp()
+					return
 				}
 			}
 		}

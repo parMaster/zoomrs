@@ -1,8 +1,8 @@
 module github.com/parMaster/zoomrs
 
-go 1.23
+go 1.25.1
 
-toolchain go1.24.3
+toolchain go1.27.1
 
 require (
 	github.com/cavaliergopher/grab/v3 v3.0.1
