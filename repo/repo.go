@@ -30,6 +30,7 @@ type Client interface {
 	Authorize() error
 	GetMeetings(ctx context.Context, daysAgo int) ([]model.Meeting, error)
 	GetToken() (*client.AccessToken, error)
+	RefreshToken(rejected *client.AccessToken) (*client.AccessToken, error)
 	DeleteMeetingRecordings(meetingId string, delete bool) error
 }
 
@@ -278,11 +279,22 @@ func (r *Repository) DownloadRecord(ctx context.Context, record *model.Record) e
 		log.Printf("[ERROR] failed to free up space, %v", err)
 	}
 
-	url := fmt.Sprintf("%s?access_token=%s", record.DownloadURL, token.AccessToken)
-	resp, err := grab.Get(path, url)
+	// the token goes in the query, so errors name record.DownloadURL and never the full URL
+	url := record.DownloadURL
+	resp, err := grab.Get(path, downloadURL(url, token))
+	// Zoom can reject a token before it expires, so a 401 gets one more attempt with a new one
+	if errors.Is(err, grab.StatusCodeError(http.StatusUnauthorized)) {
+		log.Printf("[WARN] download %s got status 401, retrying with a new token", url)
+		if token, err = r.client.RefreshToken(token); err != nil {
+			r.markDownloadFailed(ctx, record.Id)
+			return fmt.Errorf("failed to download %s, status 401, unable to refresh token: %w", url, err)
+		}
+		resp, err = grab.Get(path, downloadURL(url, token))
+	}
 	if err != nil {
 		r.markDownloadFailed(ctx, record.Id)
-		return fmt.Errorf("failed to download %s, %v", url, err)
+		// transport errors quote the request URL, token included
+		return fmt.Errorf("failed to download %s, %s", url, strings.ReplaceAll(err.Error(), token.AccessToken, "******"))
 	}
 
 	// check if the download was successful
@@ -308,6 +320,11 @@ func (r *Repository) DownloadRecord(ctx context.Context, record *model.Record) e
 	}
 
 	return nil
+}
+
+// downloadURL adds the access token Zoom expects on a recording's download link
+func downloadURL(url string, token *client.AccessToken) string {
+	return fmt.Sprintf("%s?access_token=%s", url, token.AccessToken)
 }
 
 // markDownloadFailed marks a record as failed; the caller already has a more specific
