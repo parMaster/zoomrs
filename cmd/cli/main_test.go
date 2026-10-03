@@ -139,7 +139,12 @@ func TestRun_CloudCap(t *testing.T) {
 
 func recordState(t *testing.T, s storage.Storer, id string) model.Record {
 	t.Helper()
-	recs, err := s.GetRecords(context.Background(), "m1")
+	return recordOf(t, s, "m1", id)
+}
+
+func recordOf(t *testing.T, s storage.Storer, uuid, id string) model.Record {
+	t.Helper()
+	recs, err := s.GetRecords(context.Background(), uuid)
 	require.NoError(t, err)
 	for _, r := range recs {
 		if r.Id == id {
@@ -191,6 +196,102 @@ func TestRun_Sync(t *testing.T) {
 			w.WriteHeader(http.StatusNotFound)
 		}
 		assert.ErrorContains(t, c.Run(ctx, Options{Cmd: "sync"}), "downloading terminated")
+	})
+}
+
+// seed saves a meeting that an earlier run left in the database; each record is an
+// 8-byte video the fake file server can serve
+func seed(t *testing.T, s storage.Storer, f *fakeZoom, uuid string, start time.Time, statuses map[string]model.RecordStatus) {
+	t.Helper()
+	m := model.Meeting{UUID: uuid, Id: 7, Topic: uuid, StartTime: start}
+	for id, status := range statuses {
+		m.Records = append(m.Records, model.Record{
+			Id: id, MeetingId: uuid, Type: model.SharedScreenWithGalleryView, StartTime: start,
+			FileExtension: "MP4", FileSize: 8, Status: status, DownloadURL: f.srv.URL + "/files/" + id + ".mp4",
+		})
+	}
+	require.NoError(t, s.SaveMeeting(context.Background(), m))
+}
+
+func TestRun_Sync_DownloadsOnlyTheRequestedDay(t *testing.T) {
+	tenDaysAgo := time.Now().Add(-10 * 24 * time.Hour)
+	yesterday := time.Now().Add(-24 * time.Hour)
+
+	t.Run("a queued record of an older meeting stays queued", func(t *testing.T) {
+		c, f := newTestCommander(t)
+		f.serveMeeting(t)
+		store := openStore(t, c)
+		seed(t, store, f, "old", tenDaysAgo, map[string]model.RecordStatus{"old1": model.StatusQueued})
+
+		require.NoError(t, c.Run(context.Background(), Options{Cmd: "sync", Days: 1}))
+
+		assert.Equal(t, model.StatusQueued, recordOf(t, store, "old", "old1").Status)
+		assert.Equal(t, model.StatusDownloaded, recordState(t, store, "r1").Status)
+		assert.Equal(t, int32(1), f.deletes.Load())
+	})
+
+	t.Run("failed and stuck records of an older meeting are not requeued", func(t *testing.T) {
+		c, f := newTestCommander(t)
+		f.serveMeeting(t)
+		store := openStore(t, c)
+		seed(t, store, f, "old", tenDaysAgo, map[string]model.RecordStatus{
+			"oldFailed": model.StatusFailed, "oldStuck": model.StatusDownloading,
+		})
+
+		require.NoError(t, c.Run(context.Background(), Options{Cmd: "sync", Days: 1}))
+
+		assert.Equal(t, model.StatusFailed, recordOf(t, store, "old", "oldFailed").Status)
+		assert.Equal(t, model.StatusDownloading, recordOf(t, store, "old", "oldStuck").Status)
+		assert.Equal(t, model.StatusDownloaded, recordState(t, store, "r1").Status)
+	})
+
+	t.Run("a failed record of the day is requeued and retried", func(t *testing.T) {
+		c, f := newTestCommander(t)
+		c.retryWait = time.Millisecond
+		f.serveMeeting(t)
+		var attempts atomic.Int32
+		f.file = func(w http.ResponseWriter, _ *http.Request) {
+			if attempts.Add(1) == 1 {
+				w.WriteHeader(http.StatusNotFound)
+				return
+			}
+			_, _ = w.Write([]byte("videodat"))
+		}
+
+		require.NoError(t, c.Run(context.Background(), Options{Cmd: "sync", Days: 1}))
+
+		assert.Equal(t, int32(2), attempts.Load())
+		assert.Equal(t, model.StatusDownloaded, recordState(t, openStore(t, c), "r1").Status)
+		assert.Equal(t, int32(1), f.deletes.Load())
+	})
+
+	t.Run("a meeting of the day saved by an earlier run gets its records downloaded", func(t *testing.T) {
+		c, f := newTestCommander(t)
+		f.serveMeeting(t)
+		store := openStore(t, c)
+		seed(t, store, f, "m1", yesterday, map[string]model.RecordStatus{
+			"early1": model.StatusQueued, "early2": model.StatusFailed,
+		})
+
+		require.NoError(t, c.Run(context.Background(), Options{Cmd: "sync", Days: 1}))
+
+		assert.Equal(t, model.StatusDownloaded, recordOf(t, store, "m1", "early1").Status)
+		assert.Equal(t, model.StatusDownloaded, recordOf(t, store, "m1", "early2").Status)
+		assert.Equal(t, int32(1), f.deletes.Load())
+	})
+
+	t.Run("a day with no meetings leaves the queue untouched", func(t *testing.T) {
+		c, f := newTestCommander(t)
+		store := openStore(t, c)
+		seed(t, store, f, "old", tenDaysAgo, map[string]model.RecordStatus{
+			"old1": model.StatusQueued, "oldFailed": model.StatusFailed,
+		})
+
+		require.NoError(t, c.Run(context.Background(), Options{Cmd: "sync", Days: 1}))
+
+		assert.Equal(t, model.StatusQueued, recordOf(t, store, "old", "old1").Status)
+		assert.Equal(t, model.StatusFailed, recordOf(t, store, "old", "oldFailed").Status)
+		assert.Zero(t, f.deletes.Load())
 	})
 }
 

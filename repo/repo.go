@@ -226,11 +226,25 @@ func (r *Repository) DownloadJob(ctx context.Context) {
 
 // DownloadOnce gets a queued record and downloads it
 func (r *Repository) DownloadOnce(ctx context.Context) error {
-	queued, err := r.store.GetQueuedRecord(ctx)
+	return r.downloadOnce(ctx, r.store.GetQueuedRecord, r.store.ResetFailedRecords)
+}
+
+// DownloadOnceOf is DownloadOnce limited to the records of the given meetings: records of
+// any other meeting are neither downloaded nor requeued. An empty list downloads nothing.
+func (r *Repository) DownloadOnceOf(ctx context.Context, meetingUUIDs []string) error {
+	return r.downloadOnce(ctx,
+		func(ctx context.Context) (*model.Record, error) { return r.store.GetQueuedRecordOf(ctx, meetingUUIDs) },
+		func(ctx context.Context) error { return r.store.ResetFailedRecordsOf(ctx, meetingUUIDs) },
+	)
+}
+
+func (r *Repository) downloadOnce(ctx context.Context,
+	nextQueued func(context.Context) (*model.Record, error), requeue func(context.Context) error) error {
+	queued, err := nextQueued(ctx)
 	if err == storage.ErrNoRows {
 		log.Printf("[DEBUG] No queued records")
 		// retry 'failed' records and 'downloading' records - put them back to 'queued'
-		err := r.store.ResetFailedRecords(ctx)
+		err := requeue(ctx)
 		if err != nil {
 			return errors.Join(fmt.Errorf("failed to reset failed records"), err)
 		}

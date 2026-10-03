@@ -275,6 +275,124 @@ func TestStats(t *testing.T) {
 	}, stats)
 }
 
+func TestScopedQueue(t *testing.T) {
+	ctx := context.Background()
+	day := time.Date(2024, 3, 10, 9, 0, 0, 0, time.Local)
+	// uuids the way Zoom makes them: base64 with '/', '+' and '='
+	const older, slashed, plain = "old+/uuid==", "/aB+c/Dd==", "plain"
+
+	seed := func(t *testing.T) *SQLiteStorage {
+		t.Helper()
+		store := newTestStorage(t)
+		rec := func(id, meeting string, start time.Time, status model.RecordStatus) model.Record {
+			return model.Record{Id: id, MeetingId: meeting, StartTime: start, Status: status}
+		}
+		for _, m := range []model.Meeting{
+			{UUID: older, StartTime: day.Add(-240 * time.Hour), Records: []model.Record{
+				rec("oldQueued", older, day.Add(-240*time.Hour), model.StatusQueued),
+				rec("oldFailed", older, day.Add(-240*time.Hour), model.StatusFailed),
+				rec("oldStuck", older, day.Add(-240*time.Hour), model.StatusDownloading),
+			}},
+			{UUID: slashed, StartTime: day.Add(time.Hour), Records: []model.Record{
+				rec("b2", slashed, day.Add(time.Hour), model.StatusQueued),
+				rec("b1", slashed, day.Add(time.Hour), model.StatusQueued),
+				rec("failed", slashed, day.Add(time.Hour), model.StatusFailed),
+				rec("done", slashed, day.Add(time.Hour), model.StatusDownloaded),
+			}},
+			{UUID: plain, StartTime: day, Records: []model.Record{
+				rec("a1", plain, day, model.StatusQueued),
+				rec("stuck", plain, day, model.StatusDownloading),
+			}},
+		} {
+			require.NoError(t, store.SaveMeeting(ctx, m))
+		}
+		return store
+	}
+	statuses := func(t *testing.T, store *SQLiteStorage) map[string]model.RecordStatus {
+		t.Helper()
+		got := map[string]model.RecordStatus{}
+		for _, uuid := range []string{older, slashed, plain} {
+			recs, err := store.GetRecords(ctx, uuid)
+			require.NoError(t, err)
+			for _, r := range recs {
+				got[r.Id] = r.Status
+			}
+		}
+		return got
+	}
+	untouched := map[string]model.RecordStatus{
+		"oldQueued": model.StatusQueued, "oldFailed": model.StatusFailed, "oldStuck": model.StatusDownloading,
+		"b2": model.StatusQueued, "b1": model.StatusQueued, "failed": model.StatusFailed, "done": model.StatusDownloaded,
+		"a1": model.StatusQueued, "stuck": model.StatusDownloading,
+	}
+
+	t.Run("next queued record comes from the given meetings, oldest first, then by id", func(t *testing.T) {
+		store := seed(t)
+		for _, want := range []string{"a1", "b1", "b2"} {
+			got, err := store.GetQueuedRecordOf(ctx, []string{slashed, plain, "no-such-meeting"})
+			require.NoError(t, err)
+			assert.Equal(t, want, got.Id)
+			require.NoError(t, store.UpdateRecord(ctx, got.Id, model.StatusDownloaded, ""))
+		}
+		_, err := store.GetQueuedRecordOf(ctx, []string{slashed, plain})
+		assert.ErrorIs(t, err, storage.ErrNoRows)
+		assert.Equal(t, model.StatusQueued, statuses(t, store)["oldQueued"])
+	})
+
+	t.Run("a uuid with '/', '+' and '=' is matched as is", func(t *testing.T) {
+		got, err := seed(t).GetQueuedRecordOf(ctx, []string{slashed})
+		require.NoError(t, err)
+		assert.Equal(t, "b1", got.Id)
+		assert.Equal(t, slashed, got.MeetingId)
+	})
+
+	t.Run("meetings without records have nothing queued", func(t *testing.T) {
+		_, err := seed(t).GetQueuedRecordOf(ctx, []string{"no-such-meeting", "x' OR '1'='1"})
+		assert.ErrorIs(t, err, storage.ErrNoRows)
+	})
+
+	t.Run("an empty list has nothing queued", func(t *testing.T) {
+		store := seed(t)
+		for _, none := range [][]string{nil, {}} {
+			got, err := store.GetQueuedRecordOf(ctx, none)
+			assert.ErrorIs(t, err, storage.ErrNoRows)
+			assert.Nil(t, got)
+		}
+	})
+
+	t.Run("requeue touches failed and stuck records of the given meetings only", func(t *testing.T) {
+		store := seed(t)
+		require.NoError(t, store.ResetFailedRecordsOf(ctx, []string{slashed, plain, "no-such-meeting"}))
+		assert.Equal(t, map[string]model.RecordStatus{
+			"oldQueued": model.StatusQueued, "oldFailed": model.StatusFailed, "oldStuck": model.StatusDownloading,
+			"b2": model.StatusQueued, "b1": model.StatusQueued, "failed": model.StatusQueued, "done": model.StatusDownloaded,
+			"a1": model.StatusQueued, "stuck": model.StatusQueued,
+		}, statuses(t, store))
+	})
+
+	t.Run("requeue with an empty list changes nothing", func(t *testing.T) {
+		store := seed(t)
+		require.NoError(t, store.ResetFailedRecordsOf(ctx, nil))
+		require.NoError(t, store.ResetFailedRecordsOf(ctx, []string{}))
+		assert.Equal(t, untouched, statuses(t, store))
+	})
+
+	t.Run("requeue of meetings without records changes nothing", func(t *testing.T) {
+		store := seed(t)
+		require.NoError(t, store.ResetFailedRecordsOf(ctx, []string{"no-such-meeting", "x' OR '1'='1"}))
+		assert.Equal(t, untouched, statuses(t, store))
+	})
+
+	t.Run("a closed database fails both", func(t *testing.T) {
+		store := seed(t)
+		require.NoError(t, store.DB.Close())
+		assert.Error(t, store.ResetFailedRecordsOf(ctx, []string{plain}))
+		_, err := store.GetQueuedRecordOf(ctx, []string{plain})
+		assert.Error(t, err)
+		assert.NotErrorIs(t, err, storage.ErrNoRows)
+	})
+}
+
 func TestNewStorage_BadPath(t *testing.T) {
 	_, err := NewStorage(context.Background(), "file:"+filepath.Join(t.TempDir(), "no-such-dir", "x.db")+"?mode=rwc")
 	assert.Error(t, err)

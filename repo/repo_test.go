@@ -711,6 +711,60 @@ func TestDownloadOnce(t *testing.T) {
 	})
 }
 
+func TestDownloadOnceOf(t *testing.T) {
+	now := time.Now()
+	ctx := context.Background()
+
+	t.Run("downloads and trashes the given meeting, leaves other meetings queued", func(t *testing.T) {
+		r, store, fc, _ := newTestRepo(t)
+		srv := fileServer(t, http.StatusOK, "videodat")
+		old := rec("old1", "old", model.SharedScreenWithGalleryView, now.Add(-240*time.Hour), "", 8)
+		old.DownloadURL = srv.URL + "/old.mp4"
+		queue(t, store, "old", old)
+		rc := rec("r1", "m1", model.SharedScreenWithGalleryView, now, "", 8)
+		rc.DownloadURL = srv.URL + "/video.mp4"
+		queue(t, store, "m1", rc)
+
+		require.NoError(t, r.DownloadOnceOf(ctx, []string{"m1"}))
+		assert.Equal(t, model.StatusDownloaded, recordStatus(t, store, "m1", "r1").Status)
+		assert.Equal(t, []deleteCall{{"m1", false}}, fc.deleteCalls())
+
+		assert.ErrorIs(t, r.DownloadOnceOf(ctx, []string{"m1"}), ErrNoQueuedRecords)
+		assert.Equal(t, model.StatusQueued, recordStatus(t, store, "old", "old1").Status)
+	})
+
+	t.Run("nothing queued requeues failed and stuck records of the given meetings only", func(t *testing.T) {
+		r, store, _, _ := newTestRepo(t)
+		require.NoError(t, store.SaveMeeting(ctx, mtg("m1", now, 10,
+			rec("failed", "m1", model.SharedScreenWithGalleryView, now, model.StatusFailed, 1),
+			rec("stuck", "m1", model.ChatFile, now, model.StatusDownloading, 1),
+		)))
+		require.NoError(t, store.SaveMeeting(ctx, mtg("old", now, 10,
+			rec("oldFailed", "old", model.SharedScreenWithGalleryView, now, model.StatusFailed, 1),
+			rec("oldStuck", "old", model.ChatFile, now, model.StatusDownloading, 1),
+		)))
+
+		assert.ErrorIs(t, r.DownloadOnceOf(ctx, []string{"m1", "skipped-by-sync"}), ErrNoQueuedRecords)
+		assert.Equal(t, model.StatusQueued, recordStatus(t, store, "m1", "failed").Status)
+		assert.Equal(t, model.StatusQueued, recordStatus(t, store, "m1", "stuck").Status)
+		assert.Equal(t, model.StatusFailed, recordStatus(t, store, "old", "oldFailed").Status)
+		assert.Equal(t, model.StatusDownloading, recordStatus(t, store, "old", "oldStuck").Status)
+	})
+
+	t.Run("no meetings means nothing to download or requeue", func(t *testing.T) {
+		r, store, fc, _ := newTestRepo(t)
+		require.NoError(t, store.SaveMeeting(ctx, mtg("old", now, 10,
+			rec("oldQueued", "old", model.SharedScreenWithGalleryView, now, "", 1),
+			rec("oldFailed", "old", model.ChatFile, now, model.StatusFailed, 1),
+		)))
+
+		assert.ErrorIs(t, r.DownloadOnceOf(ctx, nil), ErrNoQueuedRecords)
+		assert.Equal(t, model.StatusQueued, recordStatus(t, store, "old", "oldQueued").Status)
+		assert.Equal(t, model.StatusFailed, recordStatus(t, store, "old", "oldFailed").Status)
+		assert.Empty(t, fc.deleteCalls())
+	})
+}
+
 func TestMeetingRecordsLoaded_StoreErrorMeansNotLoaded(t *testing.T) {
 	r, store, _, _ := newTestRepo(t)
 	r.store = &stubStore{Storer: store, getRecords: func(context.Context, string) ([]model.Record, error) { return nil, errBoom }}
