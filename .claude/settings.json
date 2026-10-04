@@ -1,0 +1,17 @@
+{
+  "extraKnownMarketplaces": {
+    "parmaster-claude-dlc": {
+      "source": {
+        "source": "github",
+        "repo": "parmaster/claude-dlc"
+      }
+    }
+  },
+  "enabledPlugins": {
+    "planning@parmaster-claude-dlc": true,
+    "brainstorm@parmaster-claude-dlc": true,
+    "style@parmaster-claude-dlc": true,
+    "git-tools@parmaster-claude-dlc": true,
+    "global-rules@parmaster-claude-dlc": true
+  }
+}
