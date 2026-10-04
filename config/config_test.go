@@ -1,6 +1,8 @@
 package config
 
 import (
+	"bytes"
+	"log"
 	"os"
 	"path/filepath"
 	"testing"
@@ -25,6 +27,30 @@ func TestNewConfig_Errors(t *testing.T) {
 	assert.ErrorContains(t, err, "failed to parse config")
 }
 
+func TestNewConfig_WarnsAboutRemovedTrashDownloaded(t *testing.T) {
+	load := func(t *testing.T, yml string) string {
+		t.Helper()
+		var buf bytes.Buffer
+		out := log.Writer()
+		log.SetOutput(&buf)
+		t.Cleanup(func() { log.SetOutput(out) })
+
+		fname := filepath.Join(t.TempDir(), "config.yml")
+		require.NoError(t, os.WriteFile(fname, []byte(yml), 0o600))
+		conf, err := NewConfig(fname)
+		require.NoError(t, err)
+		assert.True(t, conf.Client.DeleteSkipped, "the rest of the config still loads")
+		return buf.String()
+	}
+
+	for _, value := range []string{"true", "false"} {
+		logged := load(t, "client:\n  trash_downloaded: "+value+"\n  delete_skipped: true\n")
+		assert.Contains(t, logged, "[WARN]")
+		assert.Contains(t, logged, "client.trash_downloaded, which is no longer used")
+	}
+	assert.Empty(t, load(t, "client:\n  delete_skipped: true\n"))
+}
+
 func Test_LoadConfig(t *testing.T) {
 	conf, err := NewConfig("config_example.yml")
 	require.NoError(t, err)
@@ -44,7 +70,6 @@ func Test_LoadConfig(t *testing.T) {
 	assert.NotEmpty(t, conf.Client.AccountId)
 	assert.NotEmpty(t, conf.Client.Id)
 	assert.NotEmpty(t, conf.Client.Secret)
-	assert.IsType(t, conf.Client.TrashDownloaded, true)
 	assert.IsType(t, conf.Client.DeleteDownloaded, true)
 
 	assert.NotEmpty(t, conf.Client.RateLimitingDelay)

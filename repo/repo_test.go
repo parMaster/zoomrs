@@ -39,7 +39,9 @@ type fakeClient struct {
 	mu          sync.Mutex
 	meetings    []model.Meeting
 	meetingsErr error
+	listErrs    []error // interval listings fail with these, one per call, before they succeed
 	daysAgo     []int
+	intervals   [][2]time.Time
 	token       string // handed out by GetToken; "tok" when empty
 	tokenErr    error
 	refreshErr  error
@@ -55,6 +57,18 @@ func (f *fakeClient) GetMeetings(_ context.Context, daysAgo int) ([]model.Meetin
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.daysAgo = append(f.daysAgo, daysAgo)
+	return f.meetings, f.meetingsErr
+}
+
+func (f *fakeClient) GetIntervalMeetings(_ context.Context, from, to time.Time) ([]model.Meeting, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.intervals = append(f.intervals, [2]time.Time{from, to})
+	if len(f.listErrs) > 0 {
+		err := f.listErrs[0]
+		f.listErrs = f.listErrs[1:]
+		return nil, err
+	}
 	return f.meetings, f.meetingsErr
 }
 
@@ -157,7 +171,6 @@ func testConfig(t *testing.T) *config.Parameters {
 	return &config.Parameters{
 		Server: config.Server{AccessKeySalt: "salt"},
 		Client: config.Client{
-			TrashDownloaded:   true,
 			RateLimitingDelay: config.RateLimitingDelay{Light: time.Millisecond, Medium: time.Millisecond, Heavy: time.Millisecond},
 		},
 		Storage: config.Storage{Type: "sqlite", Repository: t.TempDir()},
@@ -188,7 +201,18 @@ func newTestRepo(t *testing.T) (*Repository, *sqlite.SQLiteStorage, *fakeClient,
 	fc := &fakeClient{}
 	r := NewRepository(store, fc, cfg)
 	r.diskFree = func(string) (uint64, error) { return 1 << 40, nil }
+	r.retryWait = time.Millisecond
 	return r, store, fc, cfg
+}
+
+// captureLog collects what the test logs
+func captureLog(t *testing.T) *bytes.Buffer {
+	t.Helper()
+	var buf bytes.Buffer
+	out := log.Writer()
+	log.SetOutput(&buf)
+	t.Cleanup(func() { log.SetOutput(out) })
+	return &buf
 }
 
 func rec(id, meetingID string, typ model.RecordType, start time.Time, status model.RecordStatus, size model.FileSize) model.Record {
@@ -672,42 +696,24 @@ func TestDownloadOnce(t *testing.T) {
 		assert.ErrorContains(t, r.DownloadOnce(ctx), "download returned error r1")
 	})
 
-	t.Run("trashes the meeting once its last record is downloaded", func(t *testing.T) {
-		r, store, fc, _ := newTestRepo(t)
-		srv := fileServer(t, http.StatusOK, "videodat")
-		first := rec("r1", "m1", model.SharedScreenWithGalleryView, now, "", 8)
-		first.DownloadURL = srv.URL + "/video.mp4"
-		second := rec("r2", "m1", model.ChatFile, now.Add(time.Minute), "", 8)
-		second.DownloadURL = srv.URL + "/chat.mp4"
-		queue(t, store, "m1", first, second)
+	t.Run("keeps a fully downloaded meeting in the cloud, whatever the delete settings", func(t *testing.T) {
+		for _, deleteDownloaded := range []bool{false, true} {
+			r, store, fc, cfg := newTestRepo(t)
+			cfg.Client.DeleteDownloaded = deleteDownloaded
+			cfg.Client.DeleteSkipped = true
+			srv := fileServer(t, http.StatusOK, "videodat")
+			first := rec("r1", "m1", model.SharedScreenWithGalleryView, now, "", 8)
+			first.DownloadURL = srv.URL + "/video.mp4"
+			second := rec("r2", "m1", model.ChatFile, now.Add(time.Minute), "", 8)
+			second.DownloadURL = srv.URL + "/chat.mp4"
+			queue(t, store, "m1", first, second)
 
-		require.NoError(t, r.DownloadOnce(ctx))
-		assert.Empty(t, fc.deleteCalls(), "must not trash while a record is still queued")
-
-		require.NoError(t, r.DownloadOnce(ctx))
-		assert.Equal(t, []deleteCall{{"m1", false}}, fc.deleteCalls())
-	})
-
-	t.Run("keeps the meeting in the cloud when neither trash nor delete is on", func(t *testing.T) {
-		r, store, fc, cfg := newTestRepo(t)
-		cfg.Client.TrashDownloaded = false
-		srv := fileServer(t, http.StatusOK, "videodat")
-		rc := rec("r1", "m1", model.SharedScreenWithGalleryView, now, "", 8)
-		rc.DownloadURL = srv.URL + "/video.mp4"
-		queue(t, store, "m1", rc)
-
-		require.NoError(t, r.DownloadOnce(ctx))
-		assert.Empty(t, fc.deleteCalls())
-	})
-
-	t.Run("cloud delete error is returned", func(t *testing.T) {
-		r, store, fc, _ := newTestRepo(t)
-		fc.deleteErr = errBoom
-		srv := fileServer(t, http.StatusOK, "videodat")
-		rc := rec("r1", "m1", model.SharedScreenWithGalleryView, now, "", 8)
-		rc.DownloadURL = srv.URL + "/video.mp4"
-		queue(t, store, "m1", rc)
-		assert.ErrorIs(t, r.DownloadOnce(ctx), errBoom)
+			require.NoError(t, r.DownloadOnce(ctx))
+			require.NoError(t, r.DownloadOnce(ctx))
+			assert.Equal(t, model.StatusDownloaded, recordStatus(t, store, "m1", "r1").Status)
+			assert.Equal(t, model.StatusDownloaded, recordStatus(t, store, "m1", "r2").Status)
+			assert.Empty(t, fc.deleteCalls(), "delete_downloaded: %v", deleteDownloaded)
+		}
 	})
 }
 
@@ -715,8 +721,9 @@ func TestDownloadOnceOf(t *testing.T) {
 	now := time.Now()
 	ctx := context.Background()
 
-	t.Run("downloads and trashes the given meeting, leaves other meetings queued", func(t *testing.T) {
-		r, store, fc, _ := newTestRepo(t)
+	t.Run("downloads the given meeting and keeps it in the cloud, leaves other meetings queued", func(t *testing.T) {
+		r, store, fc, cfg := newTestRepo(t)
+		cfg.Client.DeleteDownloaded = true
 		srv := fileServer(t, http.StatusOK, "videodat")
 		old := rec("old1", "old", model.SharedScreenWithGalleryView, now.Add(-240*time.Hour), "", 8)
 		old.DownloadURL = srv.URL + "/old.mp4"
@@ -725,12 +732,71 @@ func TestDownloadOnceOf(t *testing.T) {
 		rc.DownloadURL = srv.URL + "/video.mp4"
 		queue(t, store, "m1", rc)
 
-		require.NoError(t, r.DownloadOnceOf(ctx, []string{"m1"}))
+		scope := NewScope([]string{"m1"})
+		require.NoError(t, r.DownloadOnceOf(ctx, scope))
 		assert.Equal(t, model.StatusDownloaded, recordStatus(t, store, "m1", "r1").Status)
-		assert.Equal(t, []deleteCall{{"m1", false}}, fc.deleteCalls())
+		assert.Empty(t, fc.deleteCalls())
 
-		assert.ErrorIs(t, r.DownloadOnceOf(ctx, []string{"m1"}), ErrNoQueuedRecords)
+		assert.ErrorIs(t, r.DownloadOnceOf(ctx, scope), ErrNoQueuedRecords)
 		assert.Equal(t, model.StatusQueued, recordStatus(t, store, "old", "old1").Status)
+	})
+
+	t.Run("failed records older than 3 days stay failed, stuck ones are requeued at any age", func(t *testing.T) {
+		r, store, _, _ := newTestRepo(t)
+		recent, old := now.Add(-71*time.Hour), now.Add(-73*time.Hour)
+		require.NoError(t, store.SaveMeeting(ctx, mtg("m1", old, 10,
+			rec("recentFailed", "m1", model.SharedScreenWithGalleryView, recent, model.StatusFailed, 1),
+			rec("oldFailed", "m1", model.SharedScreenWithGalleryView, old, model.StatusFailed, 1),
+			rec("oldStuck", "m1", model.ChatFile, old, model.StatusDownloading, 1),
+		)))
+		require.NoError(t, store.SaveMeeting(ctx, mtg("unlisted", now, 10,
+			rec("unlistedFailed", "unlisted", model.SharedScreenWithGalleryView, now, model.StatusFailed, 1),
+		)))
+
+		scope := NewScope([]string{"m1"})
+		assert.ErrorIs(t, r.DownloadOnceOf(ctx, scope), ErrNoQueuedRecords)
+		assert.Equal(t, model.StatusQueued, recordStatus(t, store, "m1", "recentFailed").Status)
+		assert.Equal(t, model.StatusFailed, recordStatus(t, store, "m1", "oldFailed").Status)
+		assert.Equal(t, model.StatusQueued, recordStatus(t, store, "m1", "oldStuck").Status)
+
+		failed, err := r.FailedRecordsOf(ctx, scope)
+		require.NoError(t, err)
+		require.Len(t, failed, 1, "failed records of other meetings are not the scope's")
+		assert.Equal(t, "oldFailed", failed[0].Id)
+	})
+
+	t.Run("a record is requeued once per scope", func(t *testing.T) {
+		r, store, _, _ := newTestRepo(t)
+		require.NoError(t, store.SaveMeeting(ctx, mtg("m1", now, 10,
+			rec("failed", "m1", model.SharedScreenWithGalleryView, now, model.StatusFailed, 1),
+			rec("stuck", "m1", model.ChatFile, now, model.StatusDownloading, 1),
+		)))
+
+		scope := NewScope([]string{"m1"})
+		assert.ErrorIs(t, r.DownloadOnceOf(ctx, scope), ErrNoQueuedRecords)
+		assert.Equal(t, model.StatusQueued, recordStatus(t, store, "m1", "failed").Status)
+		assert.Equal(t, model.StatusQueued, recordStatus(t, store, "m1", "stuck").Status)
+
+		// both attempts go wrong again: one fails, the other dies mid-download
+		require.NoError(t, store.UpdateRecord(ctx, "failed", model.StatusFailed, ""))
+		require.NoError(t, store.UpdateRecord(ctx, "stuck", model.StatusDownloading, ""))
+		assert.ErrorIs(t, r.DownloadOnceOf(ctx, scope), ErrNoQueuedRecords)
+		assert.Equal(t, model.StatusFailed, recordStatus(t, store, "m1", "failed").Status)
+		assert.Equal(t, model.StatusDownloading, recordStatus(t, store, "m1", "stuck").Status)
+
+		// the next run starts over
+		assert.ErrorIs(t, r.DownloadOnceOf(ctx, NewScope([]string{"m1"})), ErrNoQueuedRecords)
+		assert.Equal(t, model.StatusQueued, recordStatus(t, store, "m1", "failed").Status)
+		assert.Equal(t, model.StatusQueued, recordStatus(t, store, "m1", "stuck").Status)
+	})
+
+	t.Run("store errors", func(t *testing.T) {
+		r, store, _, _ := newTestRepo(t)
+		require.NoError(t, store.DB.Close())
+		scope := NewScope([]string{"m1"})
+		assert.Error(t, r.DownloadOnceOf(ctx, scope))
+		_, err := r.FailedRecordsOf(ctx, scope)
+		assert.Error(t, err)
 	})
 
 	t.Run("nothing queued requeues failed and stuck records of the given meetings only", func(t *testing.T) {
@@ -744,7 +810,7 @@ func TestDownloadOnceOf(t *testing.T) {
 			rec("oldStuck", "old", model.ChatFile, now, model.StatusDownloading, 1),
 		)))
 
-		assert.ErrorIs(t, r.DownloadOnceOf(ctx, []string{"m1", "skipped-by-sync"}), ErrNoQueuedRecords)
+		assert.ErrorIs(t, r.DownloadOnceOf(ctx, NewScope([]string{"m1", "skipped-by-sync"})), ErrNoQueuedRecords)
 		assert.Equal(t, model.StatusQueued, recordStatus(t, store, "m1", "failed").Status)
 		assert.Equal(t, model.StatusQueued, recordStatus(t, store, "m1", "stuck").Status)
 		assert.Equal(t, model.StatusFailed, recordStatus(t, store, "old", "oldFailed").Status)
@@ -758,17 +824,11 @@ func TestDownloadOnceOf(t *testing.T) {
 			rec("oldFailed", "old", model.ChatFile, now, model.StatusFailed, 1),
 		)))
 
-		assert.ErrorIs(t, r.DownloadOnceOf(ctx, nil), ErrNoQueuedRecords)
+		assert.ErrorIs(t, r.DownloadOnceOf(ctx, NewScope(nil)), ErrNoQueuedRecords)
 		assert.Equal(t, model.StatusQueued, recordStatus(t, store, "old", "oldQueued").Status)
 		assert.Equal(t, model.StatusFailed, recordStatus(t, store, "old", "oldFailed").Status)
 		assert.Empty(t, fc.deleteCalls())
 	})
-}
-
-func TestMeetingRecordsLoaded_StoreErrorMeansNotLoaded(t *testing.T) {
-	r, store, _, _ := newTestRepo(t)
-	r.store = &stubStore{Storer: store, getRecords: func(context.Context, string) ([]model.Record, error) { return nil, errBoom }}
-	assert.False(t, r.meetingRecordsLoaded(context.Background(), "m1"))
 }
 
 func TestDownloadJob(t *testing.T) {
@@ -787,11 +847,24 @@ func TestDownloadJob(t *testing.T) {
 	assert.Equal(t, int32(2), calls.Load())
 }
 
-// instance is a fake zoomrs service answering /meetingsLoaded with the given result
-func instance(t *testing.T, status int, body string) (*httptest.Server, *[]string) {
+// fakeInstance is a fake zoomrs service answering /meetingsLoaded
+type fakeInstance struct {
+	URL   string
+	calls atomic.Int32
+	mu    sync.Mutex
+	asked []string // the meetings of the last request
+}
+
+func (f *fakeInstance) lastAsked() []string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.asked
+}
+
+// instanceFunc starts a fake instance; answer gets the number of the call, starting at 1
+func instanceFunc(t *testing.T, answer func(call int32) (status int, body string)) *fakeInstance {
 	t.Helper()
-	var mu sync.Mutex
-	var asked []string
+	f := &fakeInstance{}
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, http.MethodPost, r.Method)
 		assert.Equal(t, "/meetingsLoaded/salt", r.URL.Path)
@@ -799,95 +872,192 @@ func instance(t *testing.T, status int, body string) (*httptest.Server, *[]strin
 			Meetings []string `json:"meetings"`
 		}
 		assert.NoError(t, json.NewDecoder(r.Body).Decode(&req))
-		mu.Lock()
-		asked = append(asked, req.Meetings...)
-		mu.Unlock()
+		f.mu.Lock()
+		f.asked = req.Meetings
+		f.mu.Unlock()
+		status, body := answer(f.calls.Add(1))
 		w.WriteHeader(status)
 		_, _ = w.Write([]byte(body))
 	}))
 	t.Cleanup(srv.Close)
-	return srv, &asked
+	f.URL = srv.URL
+	return f
 }
 
-func TestRequestMeetingsLoaded(t *testing.T) {
-	t.Run("no instances configured is an error", func(t *testing.T) {
+// instance is a fake instance that always gives the same answer
+func instance(t *testing.T, status int, body string) *fakeInstance {
+	t.Helper()
+	return instanceFunc(t, func(int32) (int, string) { return status, body })
+}
+
+func TestConfirmedByAll(t *testing.T) {
+	ctx := context.Background()
+	asked := []string{"m1", "m2", "m3"}
+	// one first ask plus the retries
+	const maxCalls = int32(1 + cleanupRetries)
+
+	t.Run("no instances configured confirms nothing", func(t *testing.T) {
 		r, _, _, _ := newTestRepo(t)
-		_, err := r.requestMeetingsLoaded([]string{"m1"})
-		assert.EqualError(t, err, "no instances configured")
+		confirmed, ok := r.confirmedByAll(ctx, asked)
+		assert.False(t, ok)
+		assert.Empty(t, confirmed)
 	})
 
-	t.Run("loaded only when every instance says ok", func(t *testing.T) {
+	t.Run("a meeting is confirmed only when every instance lists it", func(t *testing.T) {
 		r, _, _, cfg := newTestRepo(t)
-		ok1, asked := instance(t, http.StatusOK, `{"result":"ok"}`)
-		ok2, _ := instance(t, http.StatusOK, `{"result":"ok"}`)
-		cfg.Commander.Instances = []string{ok1.URL, ok2.URL}
-		loaded, err := r.requestMeetingsLoaded([]string{"m1", "m2"})
-		require.NoError(t, err)
-		assert.True(t, loaded)
-		assert.Equal(t, []string{"m1", "m2"}, *asked)
+		a := instance(t, http.StatusOK, `{"result":"pending","loaded":["m1","m2"]}`)
+		b := instance(t, http.StatusOK, `{"result":"pending","loaded":["m2","m3","never-asked"]}`)
+		cfg.Commander.Instances = []string{a.URL, b.URL}
 
-		pending, _ := instance(t, http.StatusOK, `{"result":"pending"}`)
-		cfg.Commander.Instances = []string{ok1.URL, pending.URL}
-		loaded, err = r.requestMeetingsLoaded([]string{"m1"})
-		require.NoError(t, err)
-		assert.False(t, loaded)
+		confirmed, ok := r.confirmedByAll(ctx, asked)
+		require.True(t, ok)
+		assert.Equal(t, map[string]bool{"m2": true}, confirmed)
+		assert.Equal(t, asked, a.lastAsked())
+		assert.Equal(t, asked, b.lastAsked())
+		assert.Equal(t, int32(1), a.calls.Load())
+		assert.Equal(t, int32(1), b.calls.Load())
 	})
 
-	t.Run("instance errors", func(t *testing.T) {
+	t.Run("an older instance answers for the whole list: ok confirms all, pending none", func(t *testing.T) {
 		r, _, _, cfg := newTestRepo(t)
-		bad, _ := instance(t, http.StatusForbidden, "")
-		cfg.Commander.Instances = []string{bad.URL}
-		_, err := r.requestMeetingsLoaded([]string{"m1"})
-		assert.ErrorContains(t, err, "status 403")
+		legacyOK := instance(t, http.StatusOK, `{"result":"ok"}`)
+		legacyPending := instance(t, http.StatusOK, `{"result":"pending"}`)
+		current := instance(t, http.StatusOK, `{"result":"pending","loaded":["m1"]}`)
 
-		garbled, _ := instance(t, http.StatusOK, "not json")
-		cfg.Commander.Instances = []string{garbled.URL}
-		_, err = r.requestMeetingsLoaded([]string{"m1"})
-		assert.ErrorContains(t, err, "failed to decode response body")
+		cfg.Commander.Instances = []string{legacyOK.URL}
+		confirmed, ok := r.confirmedByAll(ctx, asked)
+		require.True(t, ok)
+		assert.Equal(t, map[string]bool{"m1": true, "m2": true, "m3": true}, confirmed)
 
+		cfg.Commander.Instances = []string{legacyOK.URL, current.URL}
+		confirmed, ok = r.confirmedByAll(ctx, asked)
+		require.True(t, ok)
+		assert.Equal(t, map[string]bool{"m1": true}, confirmed)
+
+		cfg.Commander.Instances = []string{legacyOK.URL, legacyPending.URL}
+		confirmed, ok = r.confirmedByAll(ctx, asked)
+		require.True(t, ok)
+		assert.Empty(t, confirmed)
+	})
+
+	t.Run("an empty list from a current instance confirms nothing, even next to ok", func(t *testing.T) {
+		r, _, _, cfg := newTestRepo(t)
+		empty := instance(t, http.StatusOK, `{"result":"ok","loaded":[]}`)
+		cfg.Commander.Instances = []string{empty.URL}
+		confirmed, ok := r.confirmedByAll(ctx, asked)
+		require.True(t, ok)
+		assert.Empty(t, confirmed)
+	})
+
+	t.Run("an error status, a garbled body and a dead instance are all no answer", func(t *testing.T) {
+		r, _, _, cfg := newTestRepo(t)
 		down := httptest.NewServer(http.NotFoundHandler())
 		down.Close()
-		cfg.Commander.Instances = []string{down.URL}
-		_, err = r.requestMeetingsLoaded([]string{"m1"})
-		assert.ErrorContains(t, err, "failed to post meetingsLoaded")
+		logged := captureLog(t)
+		for name, bad := range map[string]*fakeInstance{
+			"status 403":                    instance(t, http.StatusForbidden, ""),
+			"failed to decode response":     instance(t, http.StatusOK, "not json"),
+			"failed to post meetingsLoaded": {URL: down.URL},
+		} {
+			cfg.Commander.Instances = []string{bad.URL}
+			confirmed, ok := r.confirmedByAll(ctx, asked)
+			assert.False(t, ok, name)
+			assert.Empty(t, confirmed, name)
+			assert.Contains(t, logged.String(), name)
+		}
 	})
 
-	t.Run("an instance that never answers is an error, not a hang", func(t *testing.T) {
+	t.Run("only the instances that gave no answer are asked again", func(t *testing.T) {
+		r, _, _, cfg := newTestRepo(t)
+		good := instance(t, http.StatusOK, `{"result":"ok","loaded":["m1","m2","m3"]}`)
+		dead := instance(t, http.StatusInternalServerError, "")
+		cfg.Commander.Instances = []string{dead.URL, good.URL}
+		logged := captureLog(t)
+
+		confirmed, ok := r.confirmedByAll(ctx, asked)
+		assert.False(t, ok)
+		assert.Empty(t, confirmed, "a partial answer confirms nothing")
+		assert.Equal(t, int32(1), good.calls.Load())
+		assert.Equal(t, maxCalls, dead.calls.Load())
+		assert.Contains(t, logged.String(), "retry limit reached (10), no answer from ["+dead.URL+"], nothing is deleted")
+	})
+
+	t.Run("an instance that comes back is counted, the others keep their answer", func(t *testing.T) {
+		r, _, _, cfg := newTestRepo(t)
+		good := instance(t, http.StatusOK, `{"result":"pending","loaded":["m1","m2"]}`)
+		flaky := instanceFunc(t, func(call int32) (int, string) {
+			if call < 3 {
+				return http.StatusBadGateway, ""
+			}
+			return http.StatusOK, `{"result":"pending","loaded":["m2","m3"]}`
+		})
+		cfg.Commander.Instances = []string{good.URL, flaky.URL}
+
+		confirmed, ok := r.confirmedByAll(ctx, asked)
+		require.True(t, ok)
+		assert.Equal(t, map[string]bool{"m2": true}, confirmed)
+		assert.Equal(t, int32(1), good.calls.Load())
+		assert.Equal(t, int32(3), flaky.calls.Load())
+	})
+
+	t.Run("an instance that never answers is given up on, not a hang", func(t *testing.T) {
 		r, _, _, cfg := newTestRepo(t)
 		release := make(chan struct{})
-		stalled := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { <-release }))
+		var calls atomic.Int32
+		stalled := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+			calls.Add(1)
+			<-release
+		}))
 		t.Cleanup(stalled.Close)
 		t.Cleanup(func() { close(release) }) // runs before Close, which waits for the handler
 		cfg.Commander.Instances = []string{stalled.URL}
-		r.httpClient = &http.Client{Timeout: 50 * time.Millisecond}
+		r.httpClient = &http.Client{Timeout: 20 * time.Millisecond}
 
-		done := make(chan error, 1)
+		done := make(chan bool, 1)
 		go func() {
-			_, err := r.requestMeetingsLoaded([]string{"m1"})
-			done <- err
+			_, ok := r.confirmedByAll(ctx, asked)
+			done <- ok
 		}()
 		select {
-		case err := <-done:
-			assert.ErrorContains(t, err, "failed to post meetingsLoaded to "+stalled.URL)
-		case <-time.After(5 * time.Second):
-			t.Fatal("requestMeetingsLoaded is still waiting for the instance")
+		case ok := <-done:
+			assert.False(t, ok)
+			assert.Equal(t, maxCalls, calls.Load())
+		case <-time.After(10 * time.Second):
+			t.Fatal("confirmedByAll is still waiting for the instance")
 		}
+	})
+
+	t.Run("cancel while waiting for a retry stops at once", func(t *testing.T) {
+		r, _, _, cfg := newTestRepo(t)
+		r.retryWait = time.Hour
+		dead := instance(t, http.StatusInternalServerError, "")
+		cfg.Commander.Instances = []string{dead.URL}
+		ctx, cancel := context.WithTimeout(ctx, 50*time.Millisecond)
+		defer cancel()
+
+		_, ok := r.confirmedByAll(ctx, asked)
+		assert.False(t, ok)
+		assert.Equal(t, int32(1), dead.calls.Load())
 	})
 
 	t.Run("each response body is closed before the next instance is asked", func(t *testing.T) {
 		r, _, _, cfg := newTestRepo(t)
-		ok1, _ := instance(t, http.StatusOK, `{"result":"ok"}`)
-		ok2, _ := instance(t, http.StatusOK, `{"result":"ok"}`)
-		ok3, _ := instance(t, http.StatusOK, `{"result":"ok"}`)
-		bad, _ := instance(t, http.StatusForbidden, "")
-		garbled, _ := instance(t, http.StatusOK, "not json")
-
-		for name, last := range map[string]*httptest.Server{"ok": ok3, "non-200": bad, "garbled body": garbled} {
+		ok1 := instance(t, http.StatusOK, `{"result":"ok"}`)
+		ok2 := instance(t, http.StatusOK, `{"result":"ok"}`)
+		// a bad last instance is asked again on its own until the retries run out
+		for name, tc := range map[string]struct {
+			last     *fakeInstance
+			requests int32
+		}{
+			"ok":           {instance(t, http.StatusOK, `{"result":"ok"}`), 3},
+			"non-200":      {instance(t, http.StatusForbidden, ""), 2 + maxCalls},
+			"garbled body": {instance(t, http.StatusOK, "not json"), 2 + maxCalls},
+		} {
 			tr := &bodyTrackingTransport{}
 			r.httpClient = &http.Client{Transport: tr}
-			cfg.Commander.Instances = []string{ok1.URL, ok2.URL, last.URL}
-			_, _ = r.requestMeetingsLoaded([]string{"m1"})
-			assert.Equal(t, int32(3), tr.requests.Load(), name)
+			cfg.Commander.Instances = []string{ok1.URL, ok2.URL, tc.last.URL}
+			_, _ = r.confirmedByAll(ctx, asked)
+			assert.Equal(t, tc.requests, tr.requests.Load(), name)
 			assert.Equal(t, int32(1), tr.maxOpen.Load(), "%s: bodies open at once", name)
 			assert.Equal(t, int32(0), tr.open.Load(), "%s: bodies left open", name)
 		}
@@ -927,85 +1097,152 @@ func TestCleanupJob(t *testing.T) {
 	now := time.Now()
 	meetings := []model.Meeting{mtg("m1", now, 10), mtg("m2", now, 10)}
 
-	t.Run("deletes the day's meetings once instances confirm they are loaded", func(t *testing.T) {
+	from, to := now.AddDate(0, 0, -30), now
+	const allLoaded = `{"result":"ok","loaded":["m1","m2"]}`
+
+	t.Run("lists the interval and deletes the meetings every instance confirms", func(t *testing.T) {
 		r, _, fc, cfg := newTestRepo(t)
 		fc.meetings = meetings
-		fc.deleteErr = nil
 		cfg.Client.DeleteDownloaded = true
-		ok, _ := instance(t, http.StatusOK, `{"result":"ok"}`)
-		cfg.Commander.Instances = []string{ok.URL}
+		a := instance(t, http.StatusOK, allLoaded)
+		b := instance(t, http.StatusOK, allLoaded)
+		cfg.Commander.Instances = []string{a.URL, b.URL}
 
-		r.CleanupJob(context.Background(), 2, false)
-		assert.Equal(t, []int{2}, fc.daysAgo)
+		r.CleanupJob(context.Background(), from, to, false)
+		assert.Equal(t, [][2]time.Time{{from, to}}, fc.intervals)
 		assert.Equal(t, []deleteCall{{"m1", true}, {"m2", true}}, fc.deleteCalls())
 	})
 
-	t.Run("keeps meetings an instance is still loading", func(t *testing.T) {
+	t.Run("a pending meeting does not block the others, a meeting one instance lacks is kept", func(t *testing.T) {
+		r, _, fc, cfg := newTestRepo(t)
+		fc.meetings = append([]model.Meeting{mtg("m0", now, 10)}, meetings...)
+		a := instance(t, http.StatusOK, `{"result":"pending","loaded":["m1","m2"]}`)
+		b := instance(t, http.StatusOK, `{"result":"pending","loaded":["m1"]}`)
+		cfg.Commander.Instances = []string{a.URL, b.URL}
+
+		r.CleanupJob(context.Background(), from, to, false)
+		assert.Equal(t, []deleteCall{{"m1", false}}, fc.deleteCalls(), "trashed, since delete_downloaded is off")
+	})
+
+	t.Run("keeps everything while no meeting is confirmed", func(t *testing.T) {
 		r, _, fc, cfg := newTestRepo(t)
 		fc.meetings = meetings
-		pending, _ := instance(t, http.StatusOK, `{"result":"pending"}`)
+		pending := instance(t, http.StatusOK, `{"result":"pending","loaded":[]}`)
 		cfg.Commander.Instances = []string{pending.URL}
 
-		r.CleanupJob(context.Background(), 2, false)
+		r.CleanupJob(context.Background(), from, to, false)
 		assert.Empty(t, fc.deleteCalls())
 	})
 
-	t.Run("force deletes without confirmation", func(t *testing.T) {
+	t.Run("no instances configured deletes nothing and says why", func(t *testing.T) {
+		r, _, fc, _ := newTestRepo(t)
+		fc.meetings = meetings
+		logged := captureLog(t)
+
+		r.CleanupJob(context.Background(), from, to, false)
+		assert.Empty(t, fc.deleteCalls())
+		assert.Contains(t, logged.String(), "no instances configured to confirm the meetings are loaded, nothing is deleted")
+	})
+
+	t.Run("force deletes everything without asking any instance", func(t *testing.T) {
 		r, _, fc, cfg := newTestRepo(t)
 		fc.meetings = meetings
 		fc.deleteErr = errBoom // failures are counted and logged, the loop goes on
-		pending, _ := instance(t, http.StatusOK, `{"result":"pending"}`)
+		pending := instance(t, http.StatusOK, `{"result":"pending","loaded":[]}`)
 		cfg.Commander.Instances = []string{pending.URL}
 
-		r.CleanupJob(context.Background(), 2, true)
+		r.CleanupJob(context.Background(), now, now, true)
+		assert.Equal(t, [][2]time.Time{{now, now}}, fc.intervals)
 		assert.Len(t, fc.deleteCalls(), 2)
+		assert.Zero(t, pending.calls.Load())
+	})
+
+	t.Run("force deletes with no instances configured", func(t *testing.T) {
+		r, _, fc, _ := newTestRepo(t)
+		fc.meetings = meetings
+		r.CleanupJob(context.Background(), now, now, true)
+		assert.Equal(t, []deleteCall{{"m1", false}, {"m2", false}}, fc.deleteCalls())
 	})
 
 	t.Run("nothing to clean up", func(t *testing.T) {
-		r, _, fc, _ := newTestRepo(t)
-		r.CleanupJob(context.Background(), 2, false)
-		assert.Equal(t, []int{2}, fc.daysAgo)
+		r, _, fc, cfg := newTestRepo(t)
+		ok := instance(t, http.StatusOK, allLoaded)
+		cfg.Commander.Instances = []string{ok.URL}
+		r.CleanupJob(context.Background(), from, to, false)
+		assert.Len(t, fc.intervals, 1)
 		assert.Empty(t, fc.deleteCalls())
+		assert.Zero(t, ok.calls.Load())
+	})
+
+	t.Run("the listing is retried until it works", func(t *testing.T) {
+		r, _, fc, cfg := newTestRepo(t)
+		fc.meetings = meetings
+		// more failures than an instance gets retries: the listing has no limit
+		for range cleanupRetries + 5 {
+			fc.listErrs = append(fc.listErrs, errBoom)
+		}
+		ok := instance(t, http.StatusOK, allLoaded)
+		cfg.Commander.Instances = []string{ok.URL}
+
+		r.CleanupJob(context.Background(), from, to, false)
+		assert.Len(t, fc.intervals, cleanupRetries+6)
+		assert.Len(t, fc.deleteCalls(), 2)
 	})
 
 	t.Run("listing error waits for a retry until canceled", func(t *testing.T) {
 		r, _, fc, _ := newTestRepo(t)
+		r.retryWait = time.Hour
 		fc.meetingsErr = errBoom
 		ctx, cancel := context.WithCancel(context.Background())
 		cancel()
-		r.CleanupJob(ctx, 2, false)
+		r.CleanupJob(ctx, from, to, false)
+		assert.Len(t, fc.intervals, 1)
 		assert.Empty(t, fc.deleteCalls())
 	})
 
-	t.Run("instance error waits for a retry until canceled", func(t *testing.T) {
-		r, _, fc, _ := newTestRepo(t)
-		fc.meetings = meetings // no instances configured, so the confirmation step fails
-		ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
-		defer cancel()
-		r.CleanupJob(ctx, 2, false)
+	t.Run("an instance that stays unreachable means nothing is deleted, and the next run asks again", func(t *testing.T) {
+		r, _, fc, cfg := newTestRepo(t)
+		fc.meetings = meetings
+		good := instance(t, http.StatusOK, allLoaded)
+		dead := instance(t, http.StatusInternalServerError, "")
+		cfg.Commander.Instances = []string{good.URL, dead.URL}
+		logged := captureLog(t)
+
+		r.CleanupJob(context.Background(), from, to, false)
 		assert.Empty(t, fc.deleteCalls())
+		assert.Equal(t, int32(1), good.calls.Load())
+		assert.Equal(t, int32(1+cleanupRetries), dead.calls.Load())
+		assert.Contains(t, logged.String(), "retry limit reached (10)")
+
+		r.CleanupJob(context.Background(), from, to, false)
+		assert.Empty(t, fc.deleteCalls())
+		assert.Equal(t, int32(2), good.calls.Load())
+		assert.Equal(t, int32(2*(1+cleanupRetries)), dead.calls.Load())
 	})
 
 	t.Run("instance error with an already canceled context returns at once", func(t *testing.T) {
-		r, _, fc, _ := newTestRepo(t)
+		r, _, fc, cfg := newTestRepo(t)
+		r.retryWait = time.Hour
 		fc.meetings = meetings
+		ok := instance(t, http.StatusOK, allLoaded)
+		cfg.Commander.Instances = []string{ok.URL}
 		ctx, cancel := context.WithCancel(context.Background())
 		cancel()
-		r.CleanupJob(ctx, 2, false)
+		r.CleanupJob(ctx, from, to, false)
 		assert.Empty(t, fc.deleteCalls())
+		assert.Zero(t, ok.calls.Load())
 	})
 
 	t.Run("cancel between deletes stops the loop", func(t *testing.T) {
 		r, _, fc, cfg := newTestRepo(t)
 		fc.meetings = meetings
 		cfg.Client.RateLimitingDelay.Light = time.Hour
-		// force still asks the instances, it just ignores a "pending" answer
-		pending, _ := instance(t, http.StatusOK, `{"result":"pending"}`)
-		cfg.Commander.Instances = []string{pending.URL}
+		ok := instance(t, http.StatusOK, allLoaded)
+		cfg.Commander.Instances = []string{ok.URL}
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 		fc.onDelete = cancel
-		r.CleanupJob(ctx, 2, true)
+		r.CleanupJob(ctx, from, to, false)
 		assert.Len(t, fc.deleteCalls(), 1)
 	})
 }

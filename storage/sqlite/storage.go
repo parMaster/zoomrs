@@ -264,16 +264,43 @@ func (s *SQLiteStorage) ResetFailedRecords(ctx context.Context) error {
 	return err
 }
 
-// ResetFailedRecordsOf resets failed records of the given meetings to queued.
-// An empty list resets nothing.
-func (s *SQLiteStorage) ResetFailedRecordsOf(ctx context.Context, meetingUUIDs []string) error {
+// ResetFailedRecordsOf puts records of the given meetings back in the queue and returns their ids:
+// every 'downloading' one, and the 'failed' ones that started at failedSince or later.
+// Records listed in skip are left alone. An empty list of meetings resets nothing.
+func (s *SQLiteStorage) ResetFailedRecordsOf(ctx context.Context, meetingUUIDs []string, failedSince time.Time, skip []string) ([]string, error) {
 	if len(meetingUUIDs) == 0 {
-		return nil
+		return nil, nil
 	}
-	in, args := meetingIdIn(meetingUUIDs)
-	q := "UPDATE `records` SET status = 'queued' WHERE status IN ('failed', 'downloading') AND " + in
-	_, err := s.DB.ExecContext(ctx, q, args...)
-	return err
+	// startTime is stored as local time.DateTime text, so the cutoff is compared in the same form
+	args := []any{failedSince.Local().Format(time.DateTime)}
+	in, inArgs := meetingIdIn(meetingUUIDs)
+	args = append(args, inArgs...)
+	q := "UPDATE `records` SET status = 'queued' WHERE (status = 'downloading' OR (status = 'failed' AND startTime >= ?)) AND " + in
+	if len(skip) > 0 {
+		q += " AND id NOT IN (?" + strings.Repeat(", ?", len(skip)-1) + ")"
+		for _, id := range skip {
+			args = append(args, id)
+		}
+	}
+	rows, err := s.DB.QueryContext(ctx, q+" RETURNING id", args...)
+	if err != nil {
+		return nil, err
+	}
+	defer func() {
+		if err := rows.Close(); err != nil {
+			log.Printf("[ERROR] failed to close rows: %v", err)
+		}
+	}()
+
+	var ids []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	return ids, rows.Err()
 }
 
 // GetQueuedRecord returns a queued record from the database

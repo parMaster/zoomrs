@@ -69,10 +69,9 @@ func writeJSON(t *testing.T, w http.ResponseWriter, v any) {
 
 func testClientConfig() config.Client {
 	return config.Client{
-		AccountId:       "acc",
-		Id:              "id",
-		Secret:          "secret",
-		TrashDownloaded: true,
+		AccountId: "acc",
+		Id:        "id",
+		Secret:    "secret",
 		RateLimitingDelay: config.RateLimitingDelay{
 			Light:  time.Millisecond,
 			Medium: time.Millisecond,
@@ -488,15 +487,6 @@ func TestGetCloudStorageReport(t *testing.T) {
 }
 
 func TestDeleteMeetingRecordings(t *testing.T) {
-	t.Run("refuses when neither delete nor trash is configured", func(t *testing.T) {
-		f := newFakeZoom(t)
-		cfg := testClientConfig()
-		cfg.TrashDownloaded = false
-		err := f.client(cfg).DeleteMeetingRecordings("m1", true)
-		assert.EqualError(t, err, "both delete_downloaded and trash_downloaded are false")
-		assert.Equal(t, int32(0), f.tokenCalls.Load())
-	})
-
 	cases := []struct {
 		name             string
 		deleteDownloaded bool

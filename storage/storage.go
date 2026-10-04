@@ -3,6 +3,7 @@ package storage
 import (
 	"context"
 	"errors"
+	"time"
 
 	"github.com/parMaster/zoomrs/storage/model"
 )
@@ -25,6 +26,6 @@ type Storer interface {
 	GetQueuedRecord(ctx context.Context) (*model.Record, error)
 	ResetFailedRecords(ctx context.Context) error
 	GetQueuedRecordOf(ctx context.Context, meetingUUIDs []string) (*model.Record, error)
-	ResetFailedRecordsOf(ctx context.Context, meetingUUIDs []string) error
+	ResetFailedRecordsOf(ctx context.Context, meetingUUIDs []string, failedSince time.Time, skip []string) ([]string, error)
 	Stats(ctx context.Context) (map[model.RecordStatus]any, error)
 }

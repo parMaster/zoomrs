@@ -357,11 +357,6 @@ func (z *ZoomClient) GetCloudStorageReport(from, to string) (*model.CloudRecordi
 // - delete bool - true to delete, false to trash
 // Light rate limit API
 func (z *ZoomClient) DeleteMeetingRecordings(meetingId string, delete bool) error {
-
-	if !z.cfg.DeleteDownloaded && !z.cfg.TrashDownloaded && !z.cfg.DeleteSkipped {
-		return errors.New("both delete_downloaded and trash_downloaded are false")
-	}
-
 	what := "unable to delete recordings for meeting id: " + meetingId
 
 	// @param action string - Default: trash; Allowed: trash | delete
