@@ -296,6 +296,53 @@ func TestMeetingsLoadedHandler(t *testing.T) {
 		return rw.Code, resp.Result
 	}
 
+	t.Run("lists every loaded meeting even when others are pending", func(t *testing.T) {
+		s, ctx := newTestServer(t)
+		dir := s.cfg.Storage.Repository
+		// one more loaded meeting after the pending ones: the check must not stop at the first pending
+		seeds := map[string]struct {
+			status model.RecordStatus
+			file   string // content written to disk, "-" for no file
+		}{
+			"queued":      {model.StatusQueued, "-"},
+			"missingFile": {model.StatusDownloaded, "-"},
+			"wrongSize":   {model.StatusDownloaded, "x"},
+			"loadedToo":   {model.StatusDownloaded, "data"},
+		}
+		for uuid, seed := range seeds {
+			path := filepath.Join(dir, uuid+".mp4")
+			if seed.file != "-" {
+				require.NoError(t, os.WriteFile(path, []byte(seed.file), 0o600))
+			}
+			require.NoError(t, s.store.SaveMeeting(ctx, model.Meeting{UUID: uuid, StartTime: time.Now(), Records: []model.Record{{
+				Id: "rec-" + uuid, MeetingId: uuid, StartTime: time.Now(), FileExtension: "MP4", FileSize: 4, Status: seed.status, FilePath: path,
+			}}}))
+		}
+
+		body := `{"meetings":["queued","testUUID","noRecords","missingFile","wrongSize","loadedToo"]}`
+		rw := serve(t, s.router(ctx), http.MethodPost, "/meetingsLoaded/"+s.cfg.Server.AccessKeySalt, []byte(body))
+		require.Equal(t, http.StatusOK, rw.Code)
+		assert.JSONEq(t, `{"result":"pending","loaded":["testUUID","loadedToo"]}`, rw.Body.String())
+	})
+
+	t.Run("ok lists all the meetings", func(t *testing.T) {
+		s, ctx := newTestServer(t)
+		rw := serve(t, s.router(ctx), http.MethodPost, "/meetingsLoaded/"+s.cfg.Server.AccessKeySalt, []byte(`{"meetings":["testUUID"]}`))
+		assert.JSONEq(t, `{"result":"ok","loaded":["testUUID"]}`, rw.Body.String())
+	})
+
+	t.Run("nothing loaded is an empty list, never a missing one", func(t *testing.T) {
+		// a caller reads a missing list as an older instance, where "ok" confirms everything
+		s, ctx := newTestServer(t)
+		for body, want := range map[string]string{
+			`{"meetings":["unknown"]}`: `{"result":"pending","loaded":[]}`,
+			`{"meetings":[]}`:          `{"result":"ok","loaded":[]}`,
+		} {
+			rw := serve(t, s.router(ctx), http.MethodPost, "/meetingsLoaded/"+s.cfg.Server.AccessKeySalt, []byte(body))
+			assert.JSONEq(t, want, rw.Body.String())
+		}
+	})
+
 	t.Run("ok when every record is downloaded with the right size", func(t *testing.T) {
 		s, ctx := newTestServer(t)
 		_, result := ask(t, s, ctx, `{"meetings":["testUUID"]}`)

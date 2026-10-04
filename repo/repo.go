@@ -9,6 +9,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"slices"
 	"strings"
 	"time"
 
@@ -29,6 +30,7 @@ var (
 type Client interface {
 	Authorize() error
 	GetMeetings(ctx context.Context, daysAgo int) ([]model.Meeting, error)
+	GetIntervalMeetings(ctx context.Context, from, to time.Time) ([]model.Meeting, error)
 	GetToken() (*client.AccessToken, error)
 	RefreshToken(rejected *client.AccessToken) (*client.AccessToken, error)
 	DeleteMeetingRecordings(meetingId string, delete bool) error
@@ -55,6 +57,8 @@ type Repository struct {
 	// asks other instances about loaded meetings; tests swap it. The timeout matches the
 	// service's WriteTimeout - the server cuts a longer answer anyway.
 	httpClient *http.Client
+	// pause before the cleanup lists meetings or asks an instance again; tests shorten it
+	retryWait time.Duration
 }
 
 func NewRepository(store storage.Storer, client Client, cfg *config.Parameters) *Repository {
@@ -75,7 +79,7 @@ func NewRepository(store storage.Storer, client Client, cfg *config.Parameters) 
 	}
 
 	return &Repository{store: store, client: client, cfg: cfg, Syncable: sync, diskFree: diskFree,
-		httpClient: &http.Client{Timeout: 30 * time.Second}}
+		httpClient: &http.Client{Timeout: 30 * time.Second}, retryWait: time.Minute}
 }
 
 // SyncJob is a long running job that tries SyncMeeting on a regular interval
@@ -229,13 +233,52 @@ func (r *Repository) DownloadOnce(ctx context.Context) error {
 	return r.downloadOnce(ctx, r.store.GetQueuedRecord, r.store.ResetFailedRecords)
 }
 
-// DownloadOnceOf is DownloadOnce limited to the records of the given meetings: records of
-// any other meeting are neither downloaded nor requeued. An empty list downloads nothing.
-func (r *Repository) DownloadOnceOf(ctx context.Context, meetingUUIDs []string) error {
+// failedRetryAge is how old a failed record can be and still get another attempt
+const failedRetryAge = 3 * 24 * time.Hour
+
+// Scope limits one run to the meetings it listed and remembers which records the run
+// already put back in the queue
+type Scope struct {
+	meetings    []string
+	failedSince time.Time
+	requeued    []string
+}
+
+// NewScope starts a run over the given meetings
+func NewScope(meetingUUIDs []string) *Scope {
+	return &Scope{meetings: meetingUUIDs, failedSince: time.Now().Add(-failedRetryAge)}
+}
+
+// DownloadOnceOf is DownloadOnce limited to the records of the scope's meetings: records of
+// any other meeting are neither downloaded nor requeued. An empty scope downloads nothing.
+// Stuck records are requeued at any age, failed ones only if they are recent. A record is
+// requeued once per scope, so one that fails every time can't keep the run going.
+func (r *Repository) DownloadOnceOf(ctx context.Context, scope *Scope) error {
 	return r.downloadOnce(ctx,
-		func(ctx context.Context) (*model.Record, error) { return r.store.GetQueuedRecordOf(ctx, meetingUUIDs) },
-		func(ctx context.Context) error { return r.store.ResetFailedRecordsOf(ctx, meetingUUIDs) },
+		func(ctx context.Context) (*model.Record, error) {
+			return r.store.GetQueuedRecordOf(ctx, scope.meetings)
+		},
+		func(ctx context.Context) error {
+			ids, err := r.store.ResetFailedRecordsOf(ctx, scope.meetings, scope.failedSince, scope.requeued)
+			scope.requeued = append(scope.requeued, ids...)
+			return err
+		},
 	)
+}
+
+// FailedRecordsOf returns the records of the scope's meetings that are in the failed state
+func (r *Repository) FailedRecordsOf(ctx context.Context, scope *Scope) ([]model.Record, error) {
+	failed, err := r.store.GetRecordsByStatus(ctx, model.StatusFailed)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get records by status %s: %w", model.StatusFailed, err)
+	}
+	var recs []model.Record
+	for _, rec := range failed {
+		if slices.Contains(scope.meetings, rec.MeetingId) {
+			recs = append(recs, rec)
+		}
+	}
+	return recs, nil
 }
 
 func (r *Repository) downloadOnce(ctx context.Context,
@@ -254,20 +297,14 @@ func (r *Repository) downloadOnce(ctx context.Context,
 		return errors.Join(fmt.Errorf("failed to get queued records"), err)
 	}
 
-	// download the record
+	// download the record. The meeting stays in the cloud: only the cleanup removes it,
+	// once every instance confirms its copy.
 	if queued != nil {
 		log.Printf("[DEBUG] ↓ %d MB | %s record %s meetingId %s", queued.FileSize/1024/1024, queued.Type, queued.Id, queued.MeetingId)
 		log.Printf("[INFO] ↓ %d MB | %s | %s", queued.FileSize/1024/1024, queued.Id, queued.DateTime)
 		downErr := r.DownloadRecord(ctx, queued)
 		if downErr != nil {
 			return errors.Join(fmt.Errorf("download returned error %s", queued.Id), downErr)
-		}
-
-		if r.meetingRecordsLoaded(ctx, queued.MeetingId) && (r.cfg.Client.DeleteDownloaded || r.cfg.Client.TrashDownloaded) {
-			err := r.client.DeleteMeetingRecordings(queued.MeetingId, r.cfg.Client.DeleteDownloaded)
-			if err != nil {
-				return errors.Join(fmt.Errorf("failed to delete meeting %s", queued.MeetingId), err)
-			}
 		}
 	}
 	return nil
@@ -359,148 +396,171 @@ func (r *Repository) prepareDestination(path string) error {
 	return nil
 }
 
-// meetingRecordsLoaded returns true if all records for the meeting are loaded
-func (r *Repository) meetingRecordsLoaded(ctx context.Context, meetingId string) bool {
-	records, err := r.store.GetRecords(ctx, meetingId)
-	if err != nil {
-		return false
-	}
-	for _, record := range records {
-		if record.Status != model.StatusDownloaded {
-			return false
-		}
-	}
-	return true
-}
+// cleanupRetries is how many more times an instance that gave no answer is asked
+const cleanupRetries = 10
 
-// CleanupJob is a long running job that tries to delete recordings from Zoom Cloud if they are downloaded.
-// It calls /meetingsLoaded POST API of each instance listed in cfg.Commander.Instances to ask if the list of
-// meetings (uuids) recordings are downloaded. If all instances return "ok", the recordings are deleted.
-func (r *Repository) CleanupJob(ctx context.Context, daysAgo int, force bool) {
-	var retry int
+// CleanupJob removes the recordings of the meetings from the from-to interval from Zoom Cloud.
+// It calls /meetingsLoaded POST API of each instance listed in cfg.Commander.Instances and removes
+// only the meetings every instance confirms as downloaded. With force no instance is asked and
+// every meeting of the interval is removed.
+func (r *Repository) CleanupJob(ctx context.Context, from, to time.Time, force bool) {
+	var meetings []model.Meeting
 	for {
-		meetings, err := r.client.GetMeetings(ctx, daysAgo)
-		if err != nil {
-			log.Printf("[ERROR] failed to get meetings, %v", err)
-			select {
-			case <-ctx.Done():
-				return
-			case <-time.After(1 * time.Minute):
-				continue
-			}
+		var err error
+		if meetings, err = r.client.GetIntervalMeetings(ctx, from, to); err == nil {
+			break
 		}
-		log.Printf("[INFO] Cleaning up meetings - %d in feed", len(meetings))
-		if len(meetings) == 0 {
-			log.Printf("[INFO] No meetings to cleanup %d days ago", daysAgo)
+		log.Printf("[ERROR] failed to get meetings, %v", err)
+		select {
+		case <-ctx.Done():
 			return
+		case <-time.After(r.retryWait):
 		}
-
-		uuids := []string{}
-		for _, meeting := range meetings {
-			uuids = append(uuids, meeting.UUID)
-		}
-
-		loaded, err := r.requestMeetingsLoaded(uuids)
-		if err != nil {
-			log.Printf("[ERROR] meetingsLoaded returned error: %v", err)
-			select {
-			case <-ctx.Done():
-				return
-			default:
-				retry++
-				if retry > 10 {
-					log.Printf("[ERROR] retry limit reached (10)")
-					return
-				}
-				log.Printf("[INFO] (%d) retrying after 1 minute", retry)
-				select {
-				case <-ctx.Done():
-					return
-				case <-time.After(1 * time.Minute):
-				}
-			}
-			continue
-		}
-
-		if loaded || force {
-			var deleted int
-			for _, meeting := range meetings {
-				select {
-				case <-ctx.Done():
-					log.Printf("[DEBUG] Deleting canceled")
-					return
-				default:
-					log.Printf("[DEBUG] Deleting meeting %s", meeting.UUID)
-					err := r.client.DeleteMeetingRecordings(meeting.UUID, r.cfg.Client.DeleteDownloaded)
-					if err != nil {
-						log.Printf("[ERROR] failed to delete meeting %s - %v", meeting.UUID, err)
-					} else {
-						deleted++
-					}
-					select {
-					case <-ctx.Done():
-						return
-					case <-time.After(r.cfg.Client.RateLimitingDelay.Light):
-						continue
-					}
-				}
-			}
-			log.Printf("[INFO] Deleted %d out of %d meetings", deleted, len(meetings))
-		} else {
-			log.Printf("[INFO] Deleting skipped - not all meetings are loaded")
-		}
+	}
+	interval := from.Format(time.DateOnly) + " - " + to.Format(time.DateOnly)
+	log.Printf("[INFO] Cleaning up meetings - %d in feed (%s)", len(meetings), interval)
+	if len(meetings) == 0 {
+		log.Printf("[INFO] No meetings to cleanup (%s)", interval)
 		return
 	}
+
+	if !force {
+		uuids := make([]string, len(meetings))
+		for i, meeting := range meetings {
+			uuids[i] = meeting.UUID
+		}
+		confirmed, ok := r.confirmedByAll(ctx, uuids)
+		if !ok {
+			return
+		}
+		var loaded []model.Meeting
+		for _, meeting := range meetings {
+			if confirmed[meeting.UUID] {
+				loaded = append(loaded, meeting)
+			}
+		}
+		log.Printf("[INFO] %d of %d meetings are loaded on every instance, the rest stay in the cloud", len(loaded), len(meetings))
+		meetings = loaded
+	}
+
+	var deleted int
+	for i, meeting := range meetings {
+		if i > 0 {
+			select {
+			case <-ctx.Done():
+			case <-time.After(r.cfg.Client.RateLimitingDelay.Light):
+			}
+		}
+		if ctx.Err() != nil {
+			log.Printf("[DEBUG] Deleting canceled")
+			return
+		}
+		log.Printf("[DEBUG] Deleting meeting %s", meeting.UUID)
+		if err := r.client.DeleteMeetingRecordings(meeting.UUID, r.cfg.Client.DeleteDownloaded); err != nil {
+			log.Printf("[ERROR] failed to delete meeting %s - %v", meeting.UUID, err)
+			continue
+		}
+		deleted++
+	}
+	log.Printf("[INFO] Deleted %d out of %d meetings", deleted, len(meetings))
 }
 
-// requestMeetingsLoaded calls /meetingsLoaded POST API of each instance listed in cfg.Commander.Instances
-// to ask if the list of meetings (uuids) recordings are downloaded
-func (r *Repository) requestMeetingsLoaded(meetings []string) (loaded bool, err error) {
-
-	if len(r.cfg.Commander.Instances) == 0 {
-		return false, fmt.Errorf("no instances configured")
+// confirmedByAll asks every configured instance which of the meetings it has loaded and returns
+// the ones all of them confirm. ok is false when that can't be known, and then nothing may be
+// removed: no instances are configured, or one still gave no answer after the retries.
+// Instances that answered are not asked again, so the wait does not grow with their number.
+func (r *Repository) confirmedByAll(ctx context.Context, uuids []string) (confirmed map[string]bool, ok bool) {
+	pending := r.cfg.Commander.Instances
+	if len(pending) == 0 {
+		log.Printf("[WARN] no instances configured to confirm the meetings are loaded, nothing is deleted")
+		return nil, false
 	}
 
-	req := struct {
+	body, err := json.Marshal(struct {
 		Meetings []string `json:"meetings"`
-	}{Meetings: meetings}
-
-	body, err := json.Marshal(req)
+	}{Meetings: uuids})
 	if err != nil {
-		return false, fmt.Errorf("failed to marshal meetings, %v", err)
+		log.Printf("[ERROR] failed to marshal meetings, %v", err)
+		return nil, false
 	}
 
-	for _, instance := range r.cfg.Commander.Instances {
-		ok, err := r.instanceMeetingsLoaded(instance, body)
-		if err != nil || !ok {
-			return false, err
+	var answers []map[string]bool
+	for retry := 0; ; retry++ {
+		var unanswered []string
+		for _, instance := range pending {
+			loaded, err := r.instanceMeetingsLoaded(ctx, instance, body, uuids)
+			if err != nil {
+				log.Printf("[ERROR] meetingsLoaded returned error: %v", err)
+				unanswered = append(unanswered, instance)
+				continue
+			}
+			answers = append(answers, loaded)
+		}
+		if len(unanswered) == 0 {
+			break
+		}
+		if retry == cleanupRetries {
+			log.Printf("[ERROR] retry limit reached (%d), no answer from %v, nothing is deleted", cleanupRetries, unanswered)
+			return nil, false
+		}
+		log.Printf("[INFO] (%d) asking %v again in %v", retry+1, unanswered, r.retryWait)
+		select {
+		case <-ctx.Done():
+			return nil, false
+		case <-time.After(r.retryWait):
+		}
+		pending = unanswered
+	}
+
+	confirmed = make(map[string]bool)
+	for _, uuid := range uuids {
+		if !slices.ContainsFunc(answers, func(loaded map[string]bool) bool { return !loaded[uuid] }) {
+			confirmed[uuid] = true
 		}
 	}
-	// all instances returned "ok"
-	return true, nil
+	return confirmed, true
 }
 
-// instanceMeetingsLoaded asks one instance; a function of its own so the response body
-// is closed before the next instance is asked
-func (r *Repository) instanceMeetingsLoaded(instance string, body []byte) (loaded bool, err error) {
+// instanceMeetingsLoaded asks one instance which of the meetings it has loaded; a function
+// of its own so the response body is closed before the next instance is asked
+func (r *Repository) instanceMeetingsLoaded(ctx context.Context, instance string, body []byte, uuids []string) (map[string]bool, error) {
 	url := fmt.Sprintf("%s/meetingsLoaded/%s", instance, r.cfg.Server.AccessKeySalt)
-	resp, err := r.httpClient.Post(url, "application/json", bytes.NewBuffer(body))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
 	if err != nil {
-		return false, fmt.Errorf("failed to post meetingsLoaded to %s, %v", instance, err)
+		return nil, fmt.Errorf("failed to post meetingsLoaded to %s, %v", instance, err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := r.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to post meetingsLoaded to %s, %v", instance, err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
-		return false, fmt.Errorf("failed to post meetingsLoaded to %s, status %d", instance, resp.StatusCode)
+		return nil, fmt.Errorf("failed to post meetingsLoaded to %s, status %d", instance, resp.StatusCode)
 	}
 	var result struct {
-		Result string `json:"result"`
+		Result string   `json:"result"`
+		Loaded []string `json:"loaded"`
 	}
 	err = json.NewDecoder(resp.Body).Decode(&result)
 	if err != nil {
-		return false, fmt.Errorf("failed to decode response body, %v", err)
+		return nil, fmt.Errorf("failed to decode response body of %s, %v", instance, err)
 	}
-	log.Printf("[INFO] %s/meetingsLoaded result: %v", instance, result)
-	return result.Result == "ok", nil
+
+	loaded := make(map[string]bool)
+	switch {
+	case result.Loaded != nil:
+		for _, uuid := range result.Loaded {
+			loaded[uuid] = true
+		}
+	case result.Result == "ok":
+		// an older instance sends no list and answers for all the meetings at once
+		for _, uuid := range uuids {
+			loaded[uuid] = true
+		}
+	}
+	log.Printf("[INFO] %s/meetingsLoaded result: %s, %d of %d loaded", instance, result.Result, len(loaded), len(uuids))
+	return loaded, nil
 }
 
 // CheckConsistency checks if all downloaded files exist and have correct size

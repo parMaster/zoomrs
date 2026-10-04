@@ -16,10 +16,9 @@ client:
   account_id: secret # Zoom account id - see "Zoom API credentials" in README
   id: secret         # Zoom API key id
   secret: secret     # Zoom API key secret
-# How to handle downloaded recordings in Zoom Cloud
-  trash_downloaded: false  # Trash downloaded recordings - they will be moved to trash in Zoom Cloud, deleted after 30 days and won't be counted towards the storage quota
-  delete_downloaded: false # Delete downloaded recordings - they will be ermanently deleted from Zoom Cloud. Trash is preferred over deletion
-  delete_skipped: true # delete meetings with duraion < syncable.min_duration? even if this is true, files will not be deleted if delete_downloaded is false, but will be trashed if trash_downloaded is true
+# How to remove recordings from Zoom Cloud. Downloading never removes anything: only `zoomrs-cli --cmd trash` removes a downloaded meeting, once every instance confirms its copy
+  delete_downloaded: false # false - move recordings to trash in Zoom Cloud (kept 30 days there, not counted towards the storage quota). true - delete them permanently. Trash is preferred over deletion
+  delete_skipped: true # remove meetings that are skipped (duration < syncable.min_duration or no recordings of the syncable types) from Zoom Cloud while syncing. They are trashed, or deleted permanently if delete_downloaded is true
   cloud_capacity_hard_limit: 429496729600 # 400 GB - don't allow cloud storage to grow more than this value. Look up 'cloudcap' in README for more info.
   rate_limiting_delay: # ms between looped requests. APIs are grouped into categories with progressively longer delays
     light: 300 # Free acc: 4 requests/second (250ms/request is safe, 300ms/r is extra safe); Pro: 30 r/s; Business: 80 r/s

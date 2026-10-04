@@ -24,9 +24,8 @@ type Client struct {
 	AccountId              string            `yaml:"account_id"`                // Zoom account id
 	Id                     string            `yaml:"id"`                        // Zoom client id
 	Secret                 string            `yaml:"secret"`                    // Zoom client secret
-	DeleteDownloaded       bool              `yaml:"delete_downloaded"`         // Delete downloaded files from Zoom cloud
-	TrashDownloaded        bool              `yaml:"trash_downloaded"`          // Move downloaded files to trash
-	DeleteSkipped          bool              `yaml:"delete_skipped"`            // Delete skipped files from Zoom cloud (the ones that are shorter than MinDuration)
+	DeleteDownloaded       bool              `yaml:"delete_downloaded"`         // Delete recordings from Zoom cloud permanently instead of moving them to trash
+	DeleteSkipped          bool              `yaml:"delete_skipped"`            // Remove skipped meetings from Zoom cloud (shorter than MinDuration or with nothing to sync)
 	CloudCapacityHardLimit model.FileSize    `yaml:"cloud_capacity_hard_limit"` // Hard limit for cloud storage capacity (in bytes)
 	RateLimitingDelay      RateLimitingDelay `yaml:"rate_limiting_delay"`       // Rate limiting delay
 }
@@ -100,6 +99,15 @@ func NewConfig(fname string) (*Parameters, error) {
 		log.Printf("[ERROR] failed to parse config %s: %v", fname, err)
 		return nil, fmt.Errorf("failed to parse config %s: %w", fname, err)
 	}
-	// log.Printf("[DEBUG] config: %+v", p)
+	// the key is ignored now, and a config that still sets it would stop trashing without a word
+	var removed struct {
+		Client struct {
+			TrashDownloaded *bool `yaml:"trash_downloaded"`
+		} `yaml:"client"`
+	}
+	if err = yaml.Unmarshal(data, &removed); err == nil && removed.Client.TrashDownloaded != nil {
+		log.Printf("[WARN] config %s sets client.trash_downloaded, which is no longer used: "+
+			"downloads never trash a meeting, run `zoomrs-cli --cmd trash` for that", fname)
+	}
 	return p, nil
 }

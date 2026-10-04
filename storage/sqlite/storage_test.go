@@ -360,9 +360,13 @@ func TestScopedQueue(t *testing.T) {
 		}
 	})
 
+	longAgo := day.Add(-1000 * time.Hour)
+
 	t.Run("requeue touches failed and stuck records of the given meetings only", func(t *testing.T) {
 		store := seed(t)
-		require.NoError(t, store.ResetFailedRecordsOf(ctx, []string{slashed, plain, "no-such-meeting"}))
+		ids, err := store.ResetFailedRecordsOf(ctx, []string{slashed, plain, "no-such-meeting"}, longAgo, nil)
+		require.NoError(t, err)
+		assert.ElementsMatch(t, []string{"failed", "stuck"}, ids)
 		assert.Equal(t, map[string]model.RecordStatus{
 			"oldQueued": model.StatusQueued, "oldFailed": model.StatusFailed, "oldStuck": model.StatusDownloading,
 			"b2": model.StatusQueued, "b1": model.StatusQueued, "failed": model.StatusQueued, "done": model.StatusDownloaded,
@@ -370,24 +374,64 @@ func TestScopedQueue(t *testing.T) {
 		}, statuses(t, store))
 	})
 
+	t.Run("failed records older than the cutoff stay failed, stuck ones are requeued at any age", func(t *testing.T) {
+		store := seed(t)
+		// "failed" started an hour after day: one cutoff is right on it, the other a second later
+		ids, err := store.ResetFailedRecordsOf(ctx, []string{older, slashed}, day.Add(time.Hour+time.Second), nil)
+		require.NoError(t, err)
+		assert.Equal(t, []string{"oldStuck"}, ids)
+		got := statuses(t, store)
+		assert.Equal(t, model.StatusFailed, got["oldFailed"])
+		assert.Equal(t, model.StatusFailed, got["failed"])
+		assert.Equal(t, model.StatusQueued, got["oldStuck"])
+
+		ids, err = store.ResetFailedRecordsOf(ctx, []string{older, slashed}, day.Add(time.Hour), nil)
+		require.NoError(t, err)
+		assert.Equal(t, []string{"failed"}, ids)
+		got = statuses(t, store)
+		assert.Equal(t, model.StatusFailed, got["oldFailed"])
+		assert.Equal(t, model.StatusQueued, got["failed"])
+	})
+
+	t.Run("the cutoff is compared in local time, as the records are stored", func(t *testing.T) {
+		store := seed(t)
+		ids, err := store.ResetFailedRecordsOf(ctx, []string{slashed}, day.Add(time.Hour).UTC(), nil)
+		require.NoError(t, err)
+		assert.Equal(t, []string{"failed"}, ids)
+	})
+
+	t.Run("skipped records are not requeued", func(t *testing.T) {
+		store := seed(t)
+		ids, err := store.ResetFailedRecordsOf(ctx, []string{slashed, plain}, longAgo, []string{"failed", "no-such-record"})
+		require.NoError(t, err)
+		assert.Equal(t, []string{"stuck"}, ids)
+		assert.Equal(t, model.StatusFailed, statuses(t, store)["failed"])
+	})
+
 	t.Run("requeue with an empty list changes nothing", func(t *testing.T) {
 		store := seed(t)
-		require.NoError(t, store.ResetFailedRecordsOf(ctx, nil))
-		require.NoError(t, store.ResetFailedRecordsOf(ctx, []string{}))
+		for _, none := range [][]string{nil, {}} {
+			ids, err := store.ResetFailedRecordsOf(ctx, none, longAgo, nil)
+			require.NoError(t, err)
+			assert.Empty(t, ids)
+		}
 		assert.Equal(t, untouched, statuses(t, store))
 	})
 
 	t.Run("requeue of meetings without records changes nothing", func(t *testing.T) {
 		store := seed(t)
-		require.NoError(t, store.ResetFailedRecordsOf(ctx, []string{"no-such-meeting", "x' OR '1'='1"}))
+		ids, err := store.ResetFailedRecordsOf(ctx, []string{"no-such-meeting", "x' OR '1'='1"}, longAgo, nil)
+		require.NoError(t, err)
+		assert.Empty(t, ids)
 		assert.Equal(t, untouched, statuses(t, store))
 	})
 
 	t.Run("a closed database fails both", func(t *testing.T) {
 		store := seed(t)
 		require.NoError(t, store.DB.Close())
-		assert.Error(t, store.ResetFailedRecordsOf(ctx, []string{plain}))
-		_, err := store.GetQueuedRecordOf(ctx, []string{plain})
+		_, err := store.ResetFailedRecordsOf(ctx, []string{plain}, longAgo, nil)
+		assert.Error(t, err)
+		_, err = store.GetQueuedRecordOf(ctx, []string{plain})
 		assert.Error(t, err)
 		assert.NotErrorIs(t, err, storage.ErrNoRows)
 	})

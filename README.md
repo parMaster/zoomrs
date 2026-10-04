@@ -10,7 +10,7 @@ Save thousands of dollars on Zoom Cloud Recording Storage! Download records auto
 ## Features
 
 - Download Zoom Cloud Recordings automatically
-- Delete/Trash downloaded recordings from Zoom Cloud after download
+- Delete/Trash recordings from Zoom Cloud once every instance confirms its downloaded copy
 - Specify which types of recordings to download (shared screen, gallery view, active speaker) and which to ignore (audio only, chat, etc.)
 - Host a simple web frontend to watch and share recordings
 - Run multiple instances of the service for redundancy
@@ -198,7 +198,7 @@ Auth required. Returns the total size of the recordings grouped by date. Optiona
 ```
 
 #### GET `/meetingsLoaded/{accessKey}`
-`accessKey` is checked against server.access_key_salt config option. This api is called to ask if every meeting from the list is loaded, list is passed as a JSON array of UUIDs in the request body.
+`accessKey` is checked against server.access_key_salt config option. This api is called to ask which meetings from the list are loaded, list is passed as a JSON array of UUIDs in the request body.
 Request example:
 ```json
 {
@@ -214,16 +214,20 @@ Request example:
 Response when all meetings are loaded:
 ```json
 {
-	"result":"ok"
+	"result":"ok",
+	"loaded":["in7MDVrTS5adXWFwsCwoYg==", "0ao3hvbxQvqU2wkpXjbwhw==", "pEbVqZ5jQP6+NY0ewvZ+wg==", "uOoMA3wcSF65PtwTDw/k1w=="]
 }
 ```
 Response when some meetings are not loaded:
 ```json
 {
-	"result":"pending"
+	"result":"pending",
+	"loaded":["in7MDVrTS5adXWFwsCwoYg==", "pEbVqZ5jQP6+NY0ewvZ+wg=="]
 }
 ```
-A meeting counts as loaded only when every record is `downloaded` and its file is on disk with the expected size. A file that is missing or can't be read gives `pending`, so the caller never deletes a recording from Zoom that this instance can't show a copy of.
+`loaded` lists every meeting of the request this instance has a full copy of; every meeting is checked, a pending one does not end the check. `result` is `ok` only when that is all of them. `loaded` is always there (`[]` when nothing is loaded): an instance that is not updated yet answers with `result` alone, and the `trash` command reads such an answer as "all loaded" on `ok` and "none loaded" on `pending`.
+
+A meeting counts as loaded only when it has records, every record is `downloaded` and its file is on disk with the expected size. A file that is missing or can't be read keeps the meeting out of `loaded`, so the caller never deletes a recording from Zoom that this instance can't show a copy of. A meeting with no records here (too short, or nothing of the syncable types, and kept in Zoom Cloud because `client.delete_skipped` is off) is never loaded, so `trash` leaves it in Zoom Cloud.
 
 ## CLI tool
 Zoomrs comes with a CLI tool to trash/delete recordings from Zoom Cloud. It is useful when running miltiple servers and you want to delete recordings from Zoom Cloud only after all servers have downloaded them. CLI tool is located at `cmd/cli/main.go`. Run `make` to build it and put to `dist/zoomrs-cli`.
@@ -255,15 +259,26 @@ Run it like this:
 - `trash` - trashes recordings from Zoom Cloud. Run it like this:
 
 ```sh
-./zoomrs-cli --dbg --cmd trash --trash 2
+./zoomrs-cli --dbg --cmd trash
 ```
 
-	where `2` is 2 days before today, so all the recordings from the bay before yesterday will be trashed. This is designed this way to run it as a cron job every day. Cron job line example:
+	With no `--days` it covers the last 30 days in one listing call, so a run that was missed (a power cut, a server that was down) is caught up by the next one. It asks every instance from `commander.instances` which of the listed meetings it has loaded (see `/meetingsLoaded` above) and trashes exactly the meetings that **all** of them confirm. A meeting that is still downloading somewhere, or that one instance lacks, stays in Zoom Cloud and does not hold back the others. Nothing is trashed when no instances are configured. Meetings are moved to trash, or deleted permanently if `client.delete_downloaded` is true.
+
+	An instance that does not answer is asked again a minute later, up to 10 times; instances that did answer are not asked again. If it still gives no answer, nothing is trashed in that run and the next run tries again.
+
+	`--days N` limits the run to one day, `N` days before today (`0` is today), as before. `--trash N` still works as a deprecated alias of `--days N`; giving both with different values is an error.
+
+> [!NOTE]
+> There is no grace day with the default window: yesterday's (and today's) meetings are trashed as soon as every instance confirms them. Use `--days 2` to keep the old behavior of trashing only the day before yesterday.
+
+	`--force` trashes everything in range without asking any instance. It needs an explicit `--days` (or `--trash`), so it can never reach the whole 30-day window.
+
+	Cron job line example:
 ```sh
-00 10 * * * cd $HOME/go/src/zoomrs/dist && ./zoomrs-cli --cmd trash --trash 2 --config ../config/config_cli.yml >> /var/log/cron.log 2>&1
+00 10 * * * cd $HOME/go/src/zoomrs/dist && ./zoomrs-cli --cmd trash --config ../config/config_cli.yml >> /var/log/cron.log 2>&1
 ```
 
-	will trash all recordings from the day before yesterday every day at 10:00 AM. `--config` option is used to specify the path to the configuration file. `--dbg` option can be used to enable debug logging. Logs are written to stdout, and redirected to `/var/log/cron.log` in the example above.
+	will trash the confirmed recordings of the last 30 days every day at 10:00 AM. `--config` option is used to specify the path to the configuration file. `--dbg` option can be used to enable debug logging. Logs are written to stdout, and redirected to `/var/log/cron.log` in the example above.
 
 - `cloudcap` - trims recordings from Zoom Cloud to avoid exceeding the storage limit. Leaves `Client.CloudCapacityHardLimit` bytes of the most recent recordings (review the value in config before running!), trashes the rest. Cron job line to run it every day at 5:30 AM (don't mind the paths, they are specific to my setup, use your own):
 ```sh
@@ -271,15 +286,32 @@ Run it like this:
 ```
 - `sync` - syncs recordings from Zoom Cloud. Run it like this:
 ```sh
-./zoomrs-cli --dbg --cmd sync --days 1
+./zoomrs-cli --dbg --cmd sync
 ```
 
-	`--days` parameter used with the value of `1` to sync all the yesterday recordings (1 day before today). The download is limited to the meetings Zoom lists for that day: queued, failed and unfinished records of other days are left as they are. Records of that day that fail are put back in the queue and retried until they download or 12 hours pass. This is designed this way to run it as a cron job. Cron job line example:
+	With no `--days` it lists the last 30 days in one listing call, saves the meetings it does not know yet and downloads their records, so a missed run is caught up by the next one. `--days N` limits the run to one day, `N` days before today (`--days 1` is yesterday, `--days 0` is today).
+
+	The download is limited to the meetings Zoom lists for the run: queued, failed and unfinished records of other meetings are left as they are. Of the listed meetings:
+	- records stuck in `downloading` (a run died mid-download) are put back in the queue, whatever their age
+	- `failed` records are put back in the queue only if the recording started within the last 3 days; older ones stay `failed`
+	- a record is put back once per run, so one that fails every time does not keep the run going. The run stops when the queue is empty or after 12 hours.
+
+	However the run ends (finished, 12 hours passed, an error, a signal), it logs the records of the listed meetings that are left `failed` - meeting topic, record id and start time. Nothing is logged when there are none.
+
+	Downloading never trashes or deletes anything in Zoom Cloud, only the `trash` command does.
+
+	Cron job line example:
 ```sh
-00 03 * * * cd $HOME/go/src/zoomrs/dist && ./zoomrs-cli --cmd sync --days 1 --config ../config/config_cli.yml >> /var/log/zoomrs.cron.log 2>&1
+00 03 * * * cd $HOME/go/src/zoomrs/dist && ./zoomrs-cli --cmd sync --config ../config/config_cli.yml >> /var/log/zoomrs.cron.log 2>&1
 ```
 
-will sync all recordings from the yesterday every day at 3:00 AM. `--config` option is used to specify the path to the configuration file. `--dbg` option can be used to enable debug logging. Logs are written to stdout, and redirected to `/var/log/cron.log` in the example above.
+will sync the recordings of the last 30 days every day at 3:00 AM. `--config` option is used to specify the path to the configuration file. `--dbg` option can be used to enable debug logging. Logs are written to stdout, and redirected to `/var/log/zoomrs.cron.log` in the example above.
+
+### One run at a time
+`sync`, `trash` and `cloudcap` take a lock before they do anything: a `flock` on a file next to the database, named after it (`storage.path: file:/data/_db/main.db?mode=rwc` gives `/data/_db/main.db.lock`). If another run holds it, the new one logs that (with the PID of the holder) and exits without calling Zoom. The lock is gone when the process ends, also when it is killed, so there is nothing to clean up; the file itself stays. `check` and the UI take no lock. The service does not take it either: turn `server.sync_job` and `server.download_job` off on a server where the CLI does the syncing. On Windows there is no lock.
+
+### Upgrading: `client.trash_downloaded` is gone
+The download step used to trash (`client.trash_downloaded`) or delete (`client.delete_downloaded`) a meeting in Zoom Cloud as soon as its last record was downloaded. It no longer does, in the service and in the CLI: a meeting is removed from Zoom Cloud only by the `trash` command, after every instance confirms it. `trash_downloaded` is ignored, and a config that still sets it logs a warning on load. `delete_downloaded` now only chooses between trash (false) and permanent deletion (true) for `trash` and for `delete_skipped`. If you relied on `trash_downloaded`, schedule the `trash` command.
 
 
 > [!NOTE] 
@@ -291,7 +323,7 @@ You can run multiple instances of the service to increase reliability, duplicate
 2. One or many secondary instances that download recordings but don't host web frontend. Two options are available here:
 	- Run the service with `server.sync_job: true` and `server.download_job: true` in the configuration file. This way download job will run somewhere from 00:00 to 01:00 am.
 	- Run the service with `server.sync_job: false` and `server.download_job: false` so it will just host the API. Run downloader with cron job (see `sync` cmd crontab line example in the previous section). This way you can set the time to run the download job
-3. Run cleanup job on one of the instances (see `trash` cmd crontab line example in the previous section). Use configuration file that enumerates all the instances in `server.instances` section. This way cleanup job will check all the instances for consistency and trash/delete recordings from Zoom Cloud only if all the instances have downloaded them. Disable deleting and trashing downloaded recordings (`client.trash_downloaded: false` and `client.delete_downloaded: false` in the configuration file) on every other instance but this one.
+3. Run cleanup job on one of the instances (see `trash` cmd crontab line example in the previous section). Use configuration file that enumerates all the instances in `server.instances` section. This way cleanup job will ask all the instances and trash/delete from Zoom Cloud only the meetings that all the instances have downloaded.
 
 > [!NOTE]
 > Copy yesterday's recordings from "Main" instance to "Secondary" instance

@@ -358,9 +358,9 @@ func filesOnly(next http.Handler) http.Handler {
 	})
 }
 
-// meetingsLoadedHandler is called to ask if every meeting from the list is loaded
+// meetingsLoadedHandler is called to ask which meetings from the list are loaded
 // list is passed as a JSON array of UUIDs in the request body
-// response is result:ok or result:pending
+// response is the loaded UUIDs, and result:ok if that is all of them or result:pending
 func (s *Server) meetingsLoadedHandler(ctx context.Context) func(rw http.ResponseWriter, r *http.Request) {
 	return func(rw http.ResponseWriter, r *http.Request) {
 		accessKey := r.PathValue("accessKey")
@@ -385,12 +385,8 @@ func (s *Server) meetingsLoadedHandler(ctx context.Context) func(rw http.Respons
 		}
 
 		log.Printf("[DEBUG] Checking if uuids loaded: \r\n %+v", uuids.Meetings)
-		resp := map[string]any{}
-		writeResp := func() {
-			if err := json.NewEncoder(rw).Encode(resp); err != nil {
-				log.Printf("[ERROR] failed to encode response, %v", err)
-			}
-		}
+		// never nil: a caller takes a missing list for an older instance that answers with result only
+		loaded := []string{}
 		for _, uuid := range uuids.Meetings {
 			recs, err := s.store.GetRecords(ctx, uuid)
 			if err != nil {
@@ -398,44 +394,48 @@ func (s *Server) meetingsLoadedHandler(ctx context.Context) func(rw http.Respons
 				rw.WriteHeader(http.StatusInternalServerError)
 				return
 			}
-			if len(recs) == 0 {
-				resp["result"] = "pending"
-				log.Printf("[DEBUG] Pending caused by no records for uuid: %s", uuid)
-				writeResp()
-				return
-			}
-
 			log.Printf("[DEBUG] Checking recs: \r\n %+v", recs)
-			for _, rec := range recs {
-
-				if rec.Status != model.StatusDownloaded {
-					resp["result"] = "pending"
-					log.Printf("[DEBUG] Pending caused by status %s - %s", rec.Id, rec.Status)
-					writeResp()
-					return
-				}
-
-				// a file that can't be read is not a confirmed copy, and the caller deletes the original on "ok"
-				info, err := os.Stat(rec.FilePath)
-				if err != nil {
-					resp["result"] = "pending"
-					log.Printf("[DEBUG] Pending caused by file %s - %v", rec.Id, err)
-					writeResp()
-					return
-				}
-				if info.Size() != int64(rec.FileSize) {
-					resp["result"] = "pending"
-					log.Printf("[DEBUG] Pending caused by filesize %s - %d", rec.Id, rec.FileSize)
-					writeResp()
-					return
-				}
+			if recordsLoaded(uuid, recs) {
+				loaded = append(loaded, uuid)
 			}
 		}
 
-		log.Printf("[DEBUG] All records are downloaded, returning ok")
-		resp["result"] = "ok"
-		writeResp()
+		resp := map[string]any{"result": "pending", "loaded": loaded}
+		if len(loaded) == len(uuids.Meetings) {
+			log.Printf("[DEBUG] All records are downloaded, returning ok")
+			resp["result"] = "ok"
+		}
+		if err := json.NewEncoder(rw).Encode(resp); err != nil {
+			log.Printf("[ERROR] failed to encode response, %v", err)
+		}
 	}
+}
+
+// recordsLoaded tells if a meeting with these records is a confirmed copy: it has records,
+// all of them are downloaded and every file is on disk with the expected size
+func recordsLoaded(uuid string, recs []model.Record) bool {
+	if len(recs) == 0 {
+		log.Printf("[DEBUG] Pending caused by no records for uuid: %s", uuid)
+		return false
+	}
+	for _, rec := range recs {
+		if rec.Status != model.StatusDownloaded {
+			log.Printf("[DEBUG] Pending caused by status %s - %s", rec.Id, rec.Status)
+			return false
+		}
+
+		// a file that can't be read is not a confirmed copy, and the caller deletes the original once confirmed
+		info, err := os.Stat(rec.FilePath)
+		if err != nil {
+			log.Printf("[DEBUG] Pending caused by file %s - %v", rec.Id, err)
+			return false
+		}
+		if info.Size() != int64(rec.FileSize) {
+			log.Printf("[DEBUG] Pending caused by filesize %s - %d", rec.Id, rec.FileSize)
+			return false
+		}
+	}
+	return true
 }
 
 // checkConsistencyHandler is called to check if every record has a corresponding file and file size is correct
