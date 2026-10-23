@@ -5,11 +5,11 @@ go 1.27.3
 require (
 	github.com/cavaliergopher/grab/v3 v3.0.1
 	github.com/gdamore/tcell/v2 v2.6.0
-	github.com/go-pkgz/auth v1.27.1
+	github.com/go-pkgz/auth/v2 v2.3.1
 	github.com/go-pkgz/lgr v0.11.0
 	github.com/go-pkgz/rest v1.24.0
 	github.com/go-pkgz/routegroup v1.5.3
-	github.com/golang-jwt/jwt v3.2.2+incompatible
+	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/jessevdk/go-flags v1.5.0
 	github.com/mattn/go-sqlite3 v1.14.17
 	github.com/parMaster/mcache/v2 v2.0.0

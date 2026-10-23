@@ -21,7 +21,7 @@ import (
 
 	"github.com/parMaster/mcache/v2"
 
-	"github.com/go-pkgz/auth"
+	"github.com/go-pkgz/auth/v2"
 	"github.com/go-pkgz/lgr"
 	flags "github.com/jessevdk/go-flags"
 )
