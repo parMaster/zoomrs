@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/go-pkgz/auth/token"
-	"github.com/golang-jwt/jwt"
+	"github.com/go-pkgz/auth/v2/token"
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/parMaster/mcache/v2"
 	"github.com/parMaster/zoomrs/client"
 	"github.com/parMaster/zoomrs/config"
@@ -147,9 +147,11 @@ func newTestServerWithZoom(t *testing.T) (*Server, context.Context, *fakeZoomAPI
 func authHeader(t *testing.T, s *Server) string {
 	t.Helper()
 	claims := token.Claims{
-		StandardClaims: jwt.StandardClaims{
-			ExpiresAt: time.Now().Add(time.Hour).Unix(),
+		RegisteredClaims: jwt.RegisteredClaims{
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Hour)),
 			Issuer:    "zoom-record-service",
+			// auth v2 requires exactly one audience; Google logins carry an empty one
+			Audience: jwt.ClaimStrings{""},
 		},
 		User: &token.User{
 			ID:    "google_test-user",

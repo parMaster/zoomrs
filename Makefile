@@ -27,6 +27,11 @@ GOLANGCI_LINT_VERSION=v2.14.0
 lint:
 	GOFLAGS= GOTOOLCHAIN=$$(go env GOVERSION) go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION) run ./...
 
+# Fails only on vulnerabilities our code actually calls, not on every flagged module.
+GOVULNCHECK_VERSION=v1.9.0
+vulncheck:
+	GOFLAGS= GOTOOLCHAIN=$$(go env GOVERSION) go run golang.org/x/vuln/cmd/govulncheck@$(GOVULNCHECK_VERSION) ./...
+
 run: build
 	go run ./cmd/service --config ./config/config.yml
 
@@ -57,4 +62,4 @@ release:
 	ls -l dist/release
 
 
-.PHONY: build buildsvc buildcli dbg test lint run info cli release
+.PHONY: build buildsvc buildcli dbg test lint vulncheck run info cli release

@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/go-pkgz/auth/token"
+	"github.com/go-pkgz/auth/v2/token"
 	"github.com/go-pkgz/rest"
 	"github.com/go-pkgz/routegroup"
 	"github.com/parMaster/zoomrs/storage"

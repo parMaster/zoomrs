@@ -7,9 +7,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/go-pkgz/auth/provider"
-	"github.com/go-pkgz/auth/token"
-	"github.com/golang-jwt/jwt"
+	"github.com/go-pkgz/auth/v2/provider"
+	"github.com/go-pkgz/auth/v2/token"
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/parMaster/zoomrs/config"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -30,8 +30,13 @@ func TestNewAuthService_OnlyManagersPass(t *testing.T) {
 
 	call := func(email string) int {
 		tkn, err := svc.TokenService().Token(token.Claims{
-			StandardClaims: jwt.StandardClaims{ExpiresAt: time.Now().Add(time.Hour).Unix(), Issuer: "zoom-record-service"},
-			User:           &token.User{ID: "google_x", Name: "x", Email: email},
+			RegisteredClaims: jwt.RegisteredClaims{
+				ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Hour)),
+				Issuer:    "zoom-record-service",
+				// auth v2 requires exactly one audience; Google logins carry an empty one
+				Audience: jwt.ClaimStrings{""},
+			},
+			User: &token.User{ID: "google_x", Name: "x", Email: email},
 		})
 		require.NoError(t, err)
 		req := httptest.NewRequest(http.MethodGet, "/", nil)
