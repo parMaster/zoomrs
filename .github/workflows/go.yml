@@ -37,5 +37,8 @@ jobs:
     - name: Lint
       run: make lint
 
+    - name: Vulnerability check
+      run: make vulncheck
+
     - name: Docker image
       run: docker build -t zoomrs .
